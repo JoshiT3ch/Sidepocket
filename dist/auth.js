@@ -50,8 +50,6 @@
   })();
   window.sideoutAuth={ready,saveProfile:profile=>request('/api/profile',{method:'PUT',body:JSON.stringify(profile)})};
   window.addEventListener('hashchange',()=>{if(!document.getElementById('auth-view').hidden&&['#signup','#login'].includes(location.hash))showMode(location.hash.slice(1));});
-  // A preview character does not require an account.
-  const canvas=document.getElementById('auth-avatar');const ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=false;
-  const pixels=[[6,57,38,3,'#b9cc70'],[16,36,8,14,'#30362d'],[27,36,8,14,'#30362d'],[18,42,4,10,'#cf986c'],[29,42,4,10,'#cf986c'],[12,53,12,4,'#30362d'],[27,53,13,4,'#30362d'],[14,49,10,5,'#f5f0d7'],[27,49,11,5,'#f5f0d7'],[14,32,22,11,'#30362d'],[16,34,8,8,'#59644c'],[27,34,7,8,'#59644c'],[12,18,26,18,'#30362d'],[14,20,22,14,'#ed795d'],[10,21,6,9,'#ed795d'],[36,21,6,9,'#ed795d'],[8,28,7,12,'#30362d'],[10,28,4,11,'#cf986c'],[37,28,7,11,'#30362d'],[38,28,5,9,'#cf986c'],[19,20,12,3,'#f1e9ce'],[25,26,4,4,'#f6edcf'],[21,15,8,6,'#30362d'],[22,16,6,5,'#cf986c'],[16,2,18,16,'#30362d'],[18,4,14,12,'#cf986c'],[14,8,4,5,'#cf986c'],[32,8,4,5,'#cf986c'],[19,4,12,3,'#574134'],[21,9,2,2,'#30362d'],[28,9,2,2,'#30362d'],[24,13,4,1,'#835b43'],[16,1,18,4,'#f1ecd5'],[18,-1,14,3,'#f1ecd5'],[28,4,12,2,'#f1ecd5'],[23,1,3,2,'#ed795d'],[42,35,3,13,'#755642'],[38,25,11,12,'#30362d'],[36,27,15,8,'#30362d'],[38,26,11,10,'#7286bb'],[37,28,13,6,'#7286bb'],[40,28,2,6,'#a6bce0']];
-  ctx.save();ctx.translate(98,12);ctx.scale(5.4,5.4);for(const [x,y,w,h,color]of pixels){ctx.fillStyle=color;ctx.fillRect(x,y,w,h);}ctx.restore();
+  // The same sprite renderer powers login, profiles, and story cards.
+  import('./pixel-player.js').then(({drawAvatar})=>{const canvas=document.getElementById('auth-avatar');drawAvatar(canvas.getContext('2d'),240,330,3,{characterType:'male',height:170,bodyType:'regular',skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',shirtId:'custom',capId:'nike-court-cap',bottomId:'nike-field-shorts'});}).catch(()=>{});
 })();

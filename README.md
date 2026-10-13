@@ -14,6 +14,12 @@ Open http://127.0.0.1:3000. Leave the terminal running; Ctrl+C stops the server.
 
 Opening `dist/index.html` directly shows the account screen with instructions to start the server. Login and sign-up require the server.
 
+## Wardrobe
+
+The locker includes 40 original pixel clothing designs: 10 caps, 10 shirts, 10 shorts, and 10 pants. Each category includes five Nike and five Adidas styles, with brand filtering, item previews, and live try-on. Caps include panel, mesh, visor, and reverse styles; shirts include tees, polos, tanks, zip tops, and jerseys; bottoms include shorts, joggers, track pants, and cargo pants. Equipping pants replaces shorts and vice versa. Outfits are appearance options and do not change MMR.
+
+Characters use a detailed shared pixel renderer with shaded skin, hair, jersey seams, patterned clothing, socks, shoes, and a textured paddle. The same outfit appears on the profile and story card. Existing players retain their custom jersey colors.
+
 ## Accounts
 
 Sign up with a player name, email, and a password of at least 8 characters. Registration signs you in. Existing players can log in; the header has a logout button. Each account has a separate saved character and demo rating. After signing in, players without a completed avatar must create one before entering the clubhouse. Choose a male or female character, a height (120–220 cm), body type (Lean, Regular, Broad), skin tone, and jersey color with a live pixel preview. These appearance choices do not change MMR. Character style, height, and body type can be edited later in The locker. The female pixel character has a ponytail and a different jersey cut; both characters support every height, body type, skin tone, jersey, paddle, and headwear option. Character style is an avatar preference and does not alter ratings. Existing accounts are prompted once; their previous colors and demo history are preserved.

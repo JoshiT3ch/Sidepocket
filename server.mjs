@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {WARDROBE,DEFAULT_EQUIPMENT,equipmentError} from './dist/wardrobe.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -24,7 +25,7 @@ const SESSION_SECONDS=7*24*60*60;
 const derive=promisify(scrypt);
 const hashPassword=(password,salt)=>derive(password,salt,64,{N:65536,r:8,p:2,maxmem:128*1024*1024});
 const tokenHash=token=>createHash('sha256').update(token).digest('hex');
-const defaultProfile=name=>({name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',height:170,bodyType:'regular',characterType:'male',avatarCreated:false,rating:1200,games:0,wins:0,history:[]});
+const defaultProfile=name=>({name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',height:170,bodyType:'regular',characterType:'male',avatarCreated:false,...DEFAULT_EQUIPMENT,rating:1200,games:0,wins:0,history:[]});
 const limits=new Map();
 let activeHashes=0;
 class HttpError extends Error{constructor(status,message){super(message);this.status=status;}}
@@ -39,6 +40,8 @@ async function body(req){const chunks=[];let size=0;for await(const chunk of req
 function credentials(data){const email=typeof data.email==='string'?data.email.trim().toLowerCase():'';const password=typeof data.password==='string'?data.password:'';if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new HttpError(400,'Enter a valid email address.');if(password.length<8||password.length>128)throw new HttpError(400,'Use a password between 8 and 128 characters.');return{email,password};}
 function cleanProfile(value){
  const accepted={skin:['#f1c49b','#cf986c','#a96c4b','#704630'],shirt:['#ed795d','#a6bce0','#ede8cd','#8da65d','#b59fc6'],paddle:['#7286bb','#ed795d','#d2e48e','#8f709d'],hat:['none','cap','headband']};
+ accepted.shirt=[...new Set([...accepted.shirt,...WARDROBE.shirts.map(item=>item.color)])];
+ const outfitError=equipmentError(value);if(outfitError)throw new HttpError(400,outfitError);
  const name=typeof value.name==='string'?value.name.trim():'';if(name.length<1||name.length>24)throw new HttpError(400,'Use a player name between 1 and 24 characters.');
  if(!Number.isInteger(value.height)||value.height<120||value.height>220)throw new HttpError(400,'Choose a height between 120 and 220 cm.');
  if(!['lean','regular','broad'].includes(value.bodyType))throw new HttpError(400,'Choose an available body type.');
@@ -47,7 +50,7 @@ function cleanProfile(value){
  for(const key of Object.keys(accepted))if(!accepted[key].includes(value[key]))throw new HttpError(400,'Choose an available character option.');
  if(!Number.isInteger(value.rating)||value.rating<100||value.rating>5000||!Number.isInteger(value.games)||value.games<0||value.games>1000000||!Number.isInteger(value.wins)||value.wins<0||value.wins>value.games)throw new HttpError(400,'Invalid demo statistics.');
  if(!Array.isArray(value.history)||value.history.length>20||value.history.some(x=>!x||typeof x.win!=='boolean'||!Number.isInteger(x.opponent)||x.opponent<100||x.opponent>3000||!Number.isInteger(x.delta)||Math.abs(x.delta)>32||!Number.isInteger(x.after)||x.after<100||x.after>5000))throw new HttpError(400,'Invalid demo game history.');
- return{name,skin:value.skin,shirt:value.shirt,paddle:value.paddle,hat:value.hat,height:value.height,bodyType:value.bodyType,characterType:value.characterType,avatarCreated:value.avatarCreated,rating:value.rating,games:value.games,wins:value.wins,history:value.history.map(x=>({win:x.win,opponent:x.opponent,delta:x.delta,after:x.after}))};
+ return{name,skin:value.skin,shirt:value.shirt,paddle:value.paddle,hat:value.hat,height:value.height,bodyType:value.bodyType,characterType:value.characterType,avatarCreated:value.avatarCreated,capId:value.capId,shirtId:value.shirtId,bottomId:value.bottomId,rating:value.rating,games:value.games,wins:value.wins,history:value.history.map(x=>({win:x.win,opponent:x.opponent,delta:x.delta,after:x.after}))};
 }
 async function api(req,res,url){
  if(req.method!=='GET'){
