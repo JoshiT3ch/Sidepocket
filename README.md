@@ -1,47 +1,54 @@
-# Sidepocket
+# Sidepocket / Sideout
 
-A static pickleball website prototype with a customizable 2D pixel player, demo rating, and downloadable story card.
+A pickleball website prototype with accounts, custom pixel avatars, player QR codes, doubles matches, and saved ratings.
 
-## Open locally
+## Run locally
 
-Install Node.js 24 or newer, then run these commands from the website folder:
+Use Node.js 24 or newer. From the website folder, run:
 
 ```powershell
 npm start
 ```
 
-Open http://127.0.0.1:3000. Leave the terminal running; Ctrl+C stops the server. No npm dependency installation is needed.
+Open http://127.0.0.1:3000. Leave the terminal running; Ctrl+C stops the server. No dependency installation is needed. Opening HTML directly or using a separate static preview server does not provide the account or match APIs.
 
-Opening `dist/index.html` directly shows the account screen with instructions to start the server. Login and sign-up require the server.
+## Accounts and characters
 
-## Wardrobe
+Sign up, then create an avatar with a character type, height, and body type. Male and female hairstyles have separate choices; both support six hair colors. The locker includes 40 clothing pieces across caps, shirts, shorts, and pants, with Nike and Adidas choices. Avatars and outfits are saved per account and appear on the profile and downloadable story card.
 
-The locker includes 40 original pixel clothing designs: 10 caps, 10 shirts, 10 shorts, and 10 pants. Each category includes five Nike and five Adidas styles, with brand filtering, item previews, and live try-on. Caps include panel, mesh, visor, and reverse styles; shirts include tees, polos, tanks, zip tops, and jerseys; bottoms include shorts, joggers, track pants, and cargo pants. Equipping pants replaces shorts and vice versa. Outfits are appearance options and do not change MMR.
+## QR codes and doubles
 
-Characters use a detailed shared pixel renderer with shaded skin, hair, jersey seams, patterned clothing, socks, shoes, and a textured paddle. The same outfit appears on the profile and story card. Existing players retain their custom jersey colors.
+Open **Play & QR** to show your stable player QR and code. Scan another player's QR with the camera, choose a QR photo, or paste a player code or link. Images are decoded locally in the browser.
 
-## Accounts
+Choose **Invite as my duo** to send a teammate invitation. Once they accept, both players form a duo. Each player can belong to one active duo.
 
-Sign up with a player name, email, and a password of at least 8 characters. Registration signs you in. Existing players can log in; the header has a logout button. Each account has a separate saved character and demo rating. After signing in, players without a completed avatar must create one before entering the clubhouse. Choose a male or female character, a height (120–220 cm), body type (Lean, Regular, Broad), skin tone, and jersey color with a live pixel preview. These appearance choices do not change MMR. Character style, height, and body type can be edited later in The locker. Hairstyles are exclusive to the selected character: male characters can use Short crop, Buzz cut, Side part, Spiky, Curly, and Afro; female characters can use Bob, Long waves, Ponytail, and Top bun. Both have six hair colors. Switching character type selects a compatible default hairstyle and keeps the chosen color. Incompatible hairstyles are also rejected by the profile API. Choose hair during avatar setup or in The locker, with thumbnail previews and a cap toggle. Hair is saved per account and appears on the player profile and story card. Existing male avatars default to Short crop and existing female avatars to Ponytail. Both characters support every height, body type, skin tone, jersey, paddle, and headwear option. Character style is an avatar preference and does not alter ratings. Existing accounts are prompted once; their previous colors and demo history are preserved.
+Scan a player from another duo and choose **Challenge their duo**. A player on that duo accepts the challenge. Any of the four participants can then select the winning duo and record the result. One submission updates all four ratings immediately; there is no additional result confirmation. The match records who submitted it, the winner, and each player's before/after rating. Completed results cannot be submitted again. Unplayed games can be cancelled without changing ratings.
 
-The local server stores account records and profiles in `.data/sideout.sqlite`, which is excluded from Git. Passwords use salted scrypt hashes. Sessions use random tokens in HttpOnly, SameSite cookies; tokens are hashed in the database and expire after seven days. Logout revokes the current session. Authentication attempts are rate-limited and modifying API requests are checked for the expected origin and application header.
+Pending duo invitations and challenges expire after 24 hours. An active game must be finished or cancelled before its players can start another game or change duos.
 
-Email ownership verification and password reset are not included yet. Keep the server local during this prototype phase. Public hosting requires HTTPS, persistent database storage, and an explicit `PUBLIC_ORIGIN` and `COOKIE_SECURE=true`. The default server binds to `127.0.0.1`.
+All players must connect to the same server and database. The default localhost address works only on the computer running the server. Phone-to-phone play needs a shared website address; live camera scanning needs HTTPS or a trusted local context. Photo scanning and code entry provide camera-free alternatives. Publishing requires a persistent database and appropriate PUBLIC_ORIGIN and COOKIE_SECURE configuration.
 
-## Tests
+## Ratings
+
+Rated doubles MMR starts at **1200** and uses the average rating of each duo. A win awards **20–40 points to each teammate**:
+
+- Evenly rated duos: **+30** each.
+- A 1600-average duo beats a 1200-average duo: **+22** each.
+- A 1200-average duo beats a 1600-average duo: **+38** each.
+- Very large rating differences approach **+20** for the favorite and **+40** for the underdog.
+
+The losing duo loses the winner's award, down to a minimum player rating of 100. Winning ratings have no 5000-point ceiling. Profile statistics, rated match history, and story cards use this server-owned rating. Avatar changes and client profile edits cannot change it. Older demo statistics remain stored separately and are not imported into rated MMR.
+
+## Storage and tests
+
+Accounts, sessions, profiles, player codes, duos, and matches are stored in .data/sideout.sqlite; this folder is excluded from Git and static access. Passwords use salted scrypt hashes. Sessions use random tokens in HttpOnly, SameSite cookies, with hashed tokens stored in the database. Mutation requests require the expected origin and application header. Email verification and password reset are not included.
+
+Run:
 
 ```powershell
 npm test
 ```
 
-The integration test uses a temporary database, checks registration/login/logout, profile isolation and persistence, invalid inputs, session expiry, cross-site request rejection, password hashing, rate limiting, and private file access.
+Tests cover authentication, avatar validation and migration, account isolation, genuine QR pixel decoding, doubles pairing, result authorization, all four rating updates, duplicate submissions, expiry, cancellation, and transaction rollback.
 
-## Files
-
-- `dist/index.html`: website screens
-- `dist/styles.css`: responsive styles
-- `dist/app.js`: customization, demo ratings, profile saving, and PNG export
-- `dist/auth.js`: login and sign-up forms, session checks, and logout
-- `server.mjs`: account API, SQLite persistence, and website server
-
-Ratings and match results remain demonstrations. Account records and player profiles are saved by the local server. The hosting metadata from the static prototype must be updated before deploying this server-backed version to a hosting service.
+QR libraries are vendored for offline use. Their pinned source versions and licenses are documented in dist/vendor/README.md.
