@@ -24,7 +24,7 @@ const SESSION_SECONDS=7*24*60*60;
 const derive=promisify(scrypt);
 const hashPassword=(password,salt)=>derive(password,salt,64,{N:65536,r:8,p:2,maxmem:128*1024*1024});
 const tokenHash=token=>createHash('sha256').update(token).digest('hex');
-const defaultProfile=name=>({name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',rating:1200,games:0,wins:0,history:[]});
+const defaultProfile=name=>({name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',height:170,bodyType:'regular',avatarCreated:false,rating:1200,games:0,wins:0,history:[]});
 const limits=new Map();
 let activeHashes=0;
 class HttpError extends Error{constructor(status,message){super(message);this.status=status;}}
@@ -40,10 +40,13 @@ function credentials(data){const email=typeof data.email==='string'?data.email.t
 function cleanProfile(value){
  const accepted={skin:['#f1c49b','#cf986c','#a96c4b','#704630'],shirt:['#ed795d','#a6bce0','#ede8cd','#8da65d','#b59fc6'],paddle:['#7286bb','#ed795d','#d2e48e','#8f709d'],hat:['none','cap','headband']};
  const name=typeof value.name==='string'?value.name.trim():'';if(name.length<1||name.length>24)throw new HttpError(400,'Use a player name between 1 and 24 characters.');
+ if(!Number.isInteger(value.height)||value.height<120||value.height>220)throw new HttpError(400,'Choose a height between 120 and 220 cm.');
+ if(!['lean','regular','broad'].includes(value.bodyType))throw new HttpError(400,'Choose an available body type.');
+ if(typeof value.avatarCreated!=='boolean')throw new HttpError(400,'Invalid avatar setup status.');
  for(const key of Object.keys(accepted))if(!accepted[key].includes(value[key]))throw new HttpError(400,'Choose an available character option.');
  if(!Number.isInteger(value.rating)||value.rating<100||value.rating>5000||!Number.isInteger(value.games)||value.games<0||value.games>1000000||!Number.isInteger(value.wins)||value.wins<0||value.wins>value.games)throw new HttpError(400,'Invalid demo statistics.');
  if(!Array.isArray(value.history)||value.history.length>20||value.history.some(x=>!x||typeof x.win!=='boolean'||!Number.isInteger(x.opponent)||x.opponent<100||x.opponent>3000||!Number.isInteger(x.delta)||Math.abs(x.delta)>32||!Number.isInteger(x.after)||x.after<100||x.after>5000))throw new HttpError(400,'Invalid demo game history.');
- return{name,skin:value.skin,shirt:value.shirt,paddle:value.paddle,hat:value.hat,rating:value.rating,games:value.games,wins:value.wins,history:value.history.map(x=>({win:x.win,opponent:x.opponent,delta:x.delta,after:x.after}))};
+ return{name,skin:value.skin,shirt:value.shirt,paddle:value.paddle,hat:value.hat,height:value.height,bodyType:value.bodyType,avatarCreated:value.avatarCreated,rating:value.rating,games:value.games,wins:value.wins,history:value.history.map(x=>({win:x.win,opponent:x.opponent,delta:x.delta,after:x.after}))};
 }
 async function api(req,res,url){
  if(req.method!=='GET'){
@@ -64,7 +67,7 @@ async function api(req,res,url){
    if(!timingSafeEqual(key,stored)||!user)throw new HttpError(401,'Email or password is incorrect.');createSession(req,res,user);return send(res,200,{user:userView(user)});
  }
  if(url.pathname==='/api/auth/logout'&&req.method==='POST'){const current=session(req);if(current)db.prepare('DELETE FROM sessions WHERE token_hash=?').run(current.token_hash);res.setHeader('Set-Cookie',cookie('',0));return send(res,200,{ok:true});}
- if(url.pathname==='/api/profile'&&['GET','PUT'].includes(req.method)){const current=session(req);if(!current)throw new HttpError(401,'Please log in to continue.');if(req.method==='GET'){const profile=db.prepare('SELECT data FROM profiles WHERE user_id=?').get(current.id);return send(res,200,{profile:JSON.parse(profile.data)});}const profile=cleanProfile(await body(req));db.prepare('UPDATE profiles SET data=? WHERE user_id=?').run(JSON.stringify(profile),current.id);return send(res,200,{ok:true});}
+ if(url.pathname==='/api/profile'&&['GET','PUT'].includes(req.method)){const current=session(req);if(!current)throw new HttpError(401,'Please log in to continue.');if(req.method==='GET'){const profile=db.prepare('SELECT data FROM profiles WHERE user_id=?').get(current.id);return send(res,200,{profile:{...defaultProfile(current.name),...JSON.parse(profile.data)}});}const previous=db.prepare('SELECT data FROM profiles WHERE user_id=?').get(current.id);const profile=cleanProfile({...defaultProfile(current.name),...JSON.parse(previous.data),...await body(req)});db.prepare('UPDATE profiles SET data=? WHERE user_id=?').run(JSON.stringify(profile),current.id);return send(res,200,{ok:true});}
  throw new HttpError(404,'Not found.');
 }
 const server=http.createServer(async(req,res)=>{

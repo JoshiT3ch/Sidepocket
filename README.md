@@ -16,7 +16,7 @@ Opening `dist/index.html` directly shows the account screen with instructions to
 
 ## Accounts
 
-Sign up with a player name, email, and a password of at least 8 characters. Registration signs you in. Existing players can log in; the header has a logout button. Each account has a separate saved character and demo rating.
+Sign up with a player name, email, and a password of at least 8 characters. Registration signs you in. Existing players can log in; the header has a logout button. Each account has a separate saved character and demo rating. After signing in, players without a completed avatar must create one before entering the clubhouse. Choose a height (120–220 cm), body type (Lean, Regular, Broad), skin tone, and jersey color with a live pixel preview. These appearance choices do not change MMR. Height and body type can be edited later in The locker. Existing accounts are prompted once; their previous colors and demo history are preserved.
 
 The local server stores account records and profiles in `.data/sideout.sqlite`, which is excluded from Git. Passwords use salted scrypt hashes. Sessions use random tokens in HttpOnly, SameSite cookies; tokens are hashed in the database and expire after seven days. Logout revokes the current session. Authentication attempts are rate-limited and modifying API requests are checked for the expected origin and application header.
 
