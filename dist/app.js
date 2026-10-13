@@ -3,7 +3,8 @@
 const account=await window.sideoutAuth.ready;
 if(!account)return;
 const {WARDROBE,DEFAULT_EQUIPMENT,CATEGORY_LABELS,getItem,outfitItems}=await import('./wardrobe.js');
-const {drawAvatar,drawClothingThumbnail}=await import('./pixel-player.js');
+const {drawAvatar,drawClothingThumbnail,drawHairThumbnail}=await import('./pixel-player.js');
+const {HAIRSTYLES,HAIR_COLORS,normalizeHair}=await import('./hairstyles.js');
 const defaults = {name:account.user.name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',height:170,bodyType:'regular',characterType:'male',avatarCreated:false,rating:1200,games:0,wins:0,history:[]};
 const colors = {skin:[['#f1c49b','Light'],['#cf986c','Tan'],['#a96c4b','Warm'],['#704630','Deep']],shirt:[['#ed795d','Coral'],['#a6bce0','Sky'],['#ede8cd','Cream'],['#8da65d','Moss'],['#b59fc6','Lilac']],paddle:[['#7286bb','Blue'],['#ed795d','Coral'],['#d2e48e','Lime'],['#8f709d','Purple']]};
 const hats = [['none','No cap'],['headband','Headband']];
@@ -12,6 +13,7 @@ try {const saved=account.profile;if(saved && typeof saved==='object'){state.name
 if(Number.isInteger(account.profile.height)&&account.profile.height>=120&&account.profile.height<=220)state.height=account.profile.height;
 if(['lean','regular','broad'].includes(account.profile.bodyType))state.bodyType=account.profile.bodyType;
 if(['male','female'].includes(account.profile.characterType))state.characterType=account.profile.characterType;
+Object.assign(state,normalizeHair(account.profile));
 if(WARDROBE.caps.some(item=>item.id===account.profile.capId))state.capId=account.profile.capId;
 if(account.profile.shirtId==='custom'||WARDROBE.shirts.some(item=>item.id===account.profile.shirtId))state.shirtId=account.profile.shirtId;
 if([...WARDROBE.shorts,...WARDROBE.pants].some(item=>item.id===account.profile.bottomId))state.bottomId=account.profile.bottomId;
@@ -52,7 +54,31 @@ function syncAvatarControls(){
     const group=document.getElementById('setup-'+key+'-options');group.replaceChildren();
     for(const [hex,label]of colors[key]){const button=document.createElement('button');button.type='button';button.className='swatch';button.style.backgroundColor=hex;button.setAttribute('aria-label',label+' '+(key==='skin'?'skin tone':'jersey'));button.setAttribute('aria-pressed',String(state[key]===hex));button.addEventListener('click',()=>{state[key]=hex;if(key==='shirt')state.shirtId='custom';render();});group.append(button);}
   }
+  renderHairControls();
 }
+function renderHairControls(){
+  const focused=document.activeElement;
+  const focusId=focused?.dataset.hairChoice;
+  const focusGroup=focused?.closest('[data-hair-group]')?.dataset.hairGroup;
+  for(const scope of ['setup','locker']){
+    const styles=document.getElementById(scope+'-hair-options');styles.replaceChildren();
+    for(const style of HAIRSTYLES){
+      const button=document.createElement('button');button.type='button';button.className='hair-option';button.dataset.hairChoice=style.id;button.setAttribute('aria-label',style.name+' hairstyle');button.setAttribute('aria-pressed',String(state.hairStyle===style.id));
+      const art=document.createElement('canvas');art.width=100;art.height=104;art.setAttribute('aria-hidden','true');drawHairThumbnail(art,{...state,hairStyle:style.id});
+      const label=document.createElement('span');label.textContent=style.name;button.append(art,label);
+      button.addEventListener('click',()=>{state.hairStyle=style.id;render();if(state.avatarCreated)persist();});styles.append(button);
+    }
+    const tones=document.getElementById(scope+'-hair-colors');tones.replaceChildren();
+    for(const tone of HAIR_COLORS){
+      const button=document.createElement('button');button.type='button';button.className='swatch';button.style.backgroundColor=tone.color;button.dataset.hairChoice=tone.color;button.setAttribute('aria-label',tone.name+' hair');button.setAttribute('aria-pressed',String(state.hairColor===tone.color));button.title=tone.name;
+      button.addEventListener('click',()=>{state.hairColor=tone.color;render();if(state.avatarCreated)persist();});tones.append(button);
+    }
+    document.getElementById(scope+'-hair-selected').textContent=HAIRSTYLES.find(style=>style.id===state.hairStyle).name+' · '+HAIR_COLORS.find(tone=>tone.color===state.hairColor).name;
+  }
+  document.querySelectorAll('[data-hair-headwear]').forEach(button=>{button.textContent=state.hat==='none'?'Wear cap ↗':state.hat==='headband'?'Take headband off ↗':'Take cap off ↗';});
+  if(focusId&&focusGroup){const group=[...document.querySelectorAll('[data-hair-group]')].find(element=>element.dataset.hairGroup===focusGroup);[...group.querySelectorAll('[data-hair-choice]')].find(button=>button.dataset.hairChoice===focusId)?.focus({preventScroll:true});}
+}
+document.querySelectorAll('[data-hair-headwear]').forEach(button=>button.addEventListener('click',()=>{state.hat=state.hat==='none'?'cap':'none';render();if(state.avatarCreated)persist();}));
 document.querySelectorAll('[data-character]').forEach(button=>button.addEventListener('click',()=>{state.characterType=button.dataset.character;render();if(state.avatarCreated&&button.closest('#locker-character-options'))persist();}));
 let wardrobeCategory='caps';
 let wardrobeBrand='all';
