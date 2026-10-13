@@ -1,0 +1,9 @@
+# Local service metadata and private product notes
+.openai/
+PRODUCT-NOTES.local.md
+node_modules/
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
