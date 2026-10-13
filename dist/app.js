@@ -1,13 +1,17 @@
 'use strict';
-const KEY = 'sideout-valencia-v1';
-const defaults = {name:'Court Rookie',skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',rating:1200,games:0,wins:0,history:[]};
+(async () => {
+const account=await window.sideoutAuth.ready;
+if(!account)return;
+const defaults = {name:account.user.name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',rating:1200,games:0,wins:0,history:[]};
 const colors = {skin:[['#f1c49b','Light'],['#cf986c','Tan'],['#a96c4b','Warm'],['#704630','Deep']],shirt:[['#ed795d','Coral'],['#a6bce0','Sky'],['#ede8cd','Cream'],['#8da65d','Moss'],['#b59fc6','Lilac']],paddle:[['#7286bb','Blue'],['#ed795d','Coral'],['#d2e48e','Lime'],['#8f709d','Purple']]};
 const hats = [['none','No hat'],['cap','Cap'],['headband','Headband']];
 let state = {...defaults,history:[]};
-try {const saved=JSON.parse(localStorage.getItem(KEY));if(saved && typeof saved==='object'){state.name=typeof saved.name==='string' ? saved.name.slice(0,24) : defaults.name;for(const key of Object.keys(colors))if(colors[key].some(([hex])=>hex===saved[key]))state[key]=saved[key];if(hats.some(([value])=>value===saved.hat))state.hat=saved.hat;if(Number.isInteger(saved.rating)&&saved.rating>=100&&saved.rating<=5000&&Number.isInteger(saved.games)&&saved.games>=0&&Number.isInteger(saved.wins)&&saved.wins>=0&&saved.wins<=saved.games){state.rating=saved.rating;state.games=saved.games;state.wins=saved.wins;state.history=Array.isArray(saved.history)?saved.history.filter(x=>x&&typeof x.win==='boolean'&&Number.isInteger(x.opponent)&&Number.isInteger(x.delta)&&Number.isInteger(x.after)).slice(0,20):[];}}}catch(e){}
+try {const saved=account.profile;if(saved && typeof saved==='object'){state.name=typeof saved.name==='string' ? saved.name.slice(0,24) : defaults.name;for(const key of Object.keys(colors))if(colors[key].some(([hex])=>hex===saved[key]))state[key]=saved[key];if(hats.some(([value])=>value===saved.hat))state.hat=saved.hat;if(Number.isInteger(saved.rating)&&saved.rating>=100&&saved.rating<=5000&&Number.isInteger(saved.games)&&saved.games>=0&&Number.isInteger(saved.wins)&&saved.wins>=0&&saved.wins<=saved.games){state.rating=saved.rating;state.games=saved.games;state.wins=saved.wins;state.history=Array.isArray(saved.history)?saved.history.filter(x=>x&&typeof x.win==='boolean'&&Number.isInteger(x.opponent)&&Number.isInteger(x.delta)&&Number.isInteger(x.after)).slice(0,20):[];}}}catch(e){}
 let toastTimer;
 function toast(message){const element=document.getElementById('toast');element.textContent=message;element.classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>element.classList.remove('visible'),2600);}
-function persist(){try{localStorage.setItem(KEY,JSON.stringify(state));return true;}catch(e){toast('Browser storage is unavailable. Your changes last until this page closes.');return false;}}
+let saveQueue=Promise.resolve(true);
+function persist(){const snapshot=structuredClone(state);snapshot.name=snapshot.name.trim()||defaults.name;saveQueue=saveQueue.then(()=>window.sideoutAuth.saveProfile(snapshot)).then(()=>true).catch(error=>{toast(error.message+' Your latest changes have not been saved.');return false;});return saveQueue;}
+window.sideoutFlush=()=>saveQueue;
 function rank(){return state.games<5?'Finding your level':'Placement complete';}
 function rect(ctx,x,y,w,h,color){ctx.fillStyle=color;ctx.fillRect(x,y,w,h);}
 function drawPlayer(ctx,cx,cy,scale){
@@ -50,10 +54,12 @@ function story(){const canvas=document.getElementById('story-canvas');const ctx=
 document.querySelectorAll('[data-page]').forEach(e=>e.addEventListener('click',()=>navigate(e.dataset.page)));document.querySelectorAll('[data-goto]').forEach(e=>e.addEventListener('click',()=>navigate(e.dataset.goto)));window.addEventListener('hashchange',()=>navigate(location.hash.slice(1)));
 document.getElementById('nickname').value=state.name;
 document.getElementById('nickname').addEventListener('input',e=>{state.name=e.target.value;persist();document.querySelectorAll('.player-name').forEach(el=>el.textContent=state.name.trim()||defaults.name);});
-document.getElementById('save-look').addEventListener('click',()=>{state.name=state.name.trim()||defaults.name;document.getElementById('nickname').value=state.name;const saved=persist();render();if(saved)toast('Your look is saved. See you on the court.');navigate('profile');});
+document.getElementById('save-look').addEventListener('click',async()=>{state.name=state.name.trim()||defaults.name;document.getElementById('nickname').value=state.name;const saved=await persist();render();if(saved)toast('Your look is saved. See you on the court.');navigate('profile');});
 document.getElementById('random-look').addEventListener('click',()=>{for(const key of Object.keys(colors))state[key]=colors[key][Math.floor(Math.random()*colors[key].length)][0];state.hat=hats[Math.floor(Math.random()*hats.length)][0];persist();render();toast('Fresh fit unlocked.');});
 document.getElementById('demo-win').addEventListener('click',()=>simulate(true));document.getElementById('demo-loss').addEventListener('click',()=>simulate(false));
 document.getElementById('reset-demo').addEventListener('click',()=>{state.rating=1200;state.games=0;state.wins=0;state.history=[];persist();render();document.getElementById('rating-feedback').textContent='Demo rating reset. Your character stays yours.';toast('Demo rating reset to 1200.');});
 const dialog=document.getElementById('story-dialog');document.getElementById('share-open').addEventListener('click',async()=>{if(document.fonts)await document.fonts.ready;story();dialog.showModal();});document.getElementById('share-close').addEventListener('click',()=>dialog.close());dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
 document.getElementById('download-story').addEventListener('click',()=>{story().toBlob(blob=>{if(!blob){toast('Could not create the card. Try again.');return;}const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='sideout-story.png';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);toast('Story card downloaded. Upload it to your story.');},'image/png');});
 render();navigate(location.hash.slice(1));
+
+})();

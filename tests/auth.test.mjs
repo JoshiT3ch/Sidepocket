@@ -1,0 +1,33 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {mkdtemp,rm} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import net from 'node:net';
+import {DatabaseSync} from 'node:sqlite';
+
+test('accounts, authenticated profiles, and session protections',{timeout:30000},async t=>{
+ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+ const dataDir=await mkdtemp(path.join(os.tmpdir(),'sideout-auth-test-'));
+ const probe=net.createServer();await new Promise(resolve=>probe.listen(0,'127.0.0.1',resolve));const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));
+ const origin=`http://127.0.0.1:${port}`;
+ const child=spawn(process.execPath,[path.join(root,'server.mjs')],{env:{...process.env,PORT:String(port),HOST:'127.0.0.1',SIDEOUT_DATA_DIR:dataDir,PUBLIC_ORIGIN:'',COOKIE_SECURE:'false'},stdio:['ignore','pipe','pipe']});
+ t.after(async()=>{const exit=new Promise(resolve=>child.once('exit',resolve));child.kill();await exit;await rm(dataDir,{recursive:true,force:true});});
+ await new Promise((resolve,reject)=>{child.stdout.once('data',resolve);child.once('error',reject);child.once('exit',code=>reject(new Error('Server exited '+code)));});
+ async function request(route,{method='GET',data,cookie,foreignOrigin,requestHeader=true}={}){const headers={};if(cookie)headers.Cookie=cookie;if(data!==undefined){headers['Content-Type']='application/json';headers.Origin=foreignOrigin||origin;if(requestHeader)headers['X-Sideout-Request']='1';}const response=await fetch(origin+route,{method,headers,body:data!==undefined?JSON.stringify(data):undefined});return{response,status:response.status,json:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]};}
+ const credentials={name:'Test Player',email:'player@example.invalid',password:'TestPassword-2026'};
+ await t.test('anonymous profile access is blocked',async()=>{assert.equal((await request('/api/profile')).status,401);assert.equal((await request('/api/auth/session')).json.user,null);});
+ await t.test('cross-site and malformed registration are blocked',async()=>{assert.equal((await request('/api/auth/signup',{method:'POST',data:credentials,foreignOrigin:'https://untrusted.invalid'})).status,403);assert.equal((await request('/api/auth/signup',{method:'POST',data:credentials,requestHeader:false})).status,403);assert.equal((await request('/api/auth/signup',{method:'POST',data:{...credentials,password:'short'}})).status,400);});
+ let a;
+ await t.test('signup creates a session without exposing credentials',async()=>{a=await request('/api/auth/signup',{method:'POST',data:credentials});assert.equal(a.status,201);assert.ok(a.cookie);assert.match(a.response.headers.get('set-cookie'),/HttpOnly/);assert.match(a.response.headers.get('set-cookie'),/SameSite=Lax/);assert.equal(a.json.user.email,credentials.email);assert.equal(a.json.user.password_hash,undefined);assert.equal((await request('/api/auth/session',{cookie:a.cookie})).json.user.id,a.json.user.id);});
+ await t.test('duplicate signup and incorrect passwords are rejected',async()=>{assert.equal((await request('/api/auth/signup',{method:'POST',data:credentials})).status,409);assert.equal((await request('/api/auth/login',{method:'POST',data:{...credentials,password:'WrongPassword-2026'}})).status,401);});
+ let profile;
+ await t.test('authenticated profile changes persist',async()=>{profile=(await request('/api/profile',{cookie:a.cookie})).json.profile;assert.equal(profile.name,credentials.name);profile.shirt='#b59fc6';profile.rating=1216;profile.games=1;profile.wins=1;profile.history=[{win:true,opponent:1200,delta:16,after:1216}];assert.equal((await request('/api/profile',{method:'PUT',data:profile,cookie:a.cookie})).status,200);assert.deepEqual((await request('/api/profile',{cookie:a.cookie})).json.profile,profile);assert.equal((await request('/api/profile',{method:'PUT',data:{...profile,rating:-1},cookie:a.cookie})).status,400);});
+ await t.test('two accounts have separate profiles',async()=>{const b=await request('/api/auth/signup',{method:'POST',data:{...credentials,name:'Second Player',email:'second@example.invalid'}});assert.equal(b.status,201);const own=(await request('/api/profile',{cookie:b.cookie})).json.profile;assert.equal(own.name,'Second Player');assert.equal(own.rating,1200);assert.equal(own.games,0);assert.deepEqual((await request('/api/profile',{cookie:a.cookie})).json.profile,profile);});
+ await t.test('logout revokes the cookie and login restores the correct profile',async()=>{assert.equal((await request('/api/auth/logout',{method:'POST',data:{},cookie:a.cookie})).status,200);assert.equal((await request('/api/profile',{cookie:a.cookie})).status,401);const login=await request('/api/auth/login',{method:'POST',data:{...credentials,email:credentials.email.toUpperCase()}});assert.equal(login.status,200);assert.notEqual(login.cookie,a.cookie);assert.deepEqual((await request('/api/profile',{cookie:login.cookie})).json.profile,profile);a=login;});
+ await t.test('private database files cannot be served',async()=>{assert.equal((await fetch(origin+'/.data/sideout.sqlite')).status,404);assert.equal((await fetch(origin+'/server.mjs')).status,404);});
+ await t.test('password and session tokens are hashed in the database',async()=>{const db=new DatabaseSync(path.join(dataDir,'sideout.sqlite'));try{const stored=db.prepare('SELECT password_hash,salt FROM users WHERE id=?').get(a.json.user.id);assert.notEqual(stored.password_hash,credentials.password);assert.match(stored.password_hash,/^[a-f0-9]{128}$/);assert.match(stored.salt,/^[a-f0-9]{32}$/);const tokens=db.prepare('SELECT token_hash FROM sessions WHERE user_id=?').all(a.json.user.id);assert.ok(tokens.every(row=>row.token_hash!==a.cookie.split('=')[1]));db.prepare('UPDATE sessions SET expires_at=0 WHERE user_id=?').run(a.json.user.id);}finally{db.close();}assert.equal((await request('/api/profile',{cookie:a.cookie})).status,401);});
+ await t.test('repeated failed attempts are limited',async()=>{let status=0;for(let i=0;i<21;i++){status=(await request('/api/auth/login',{method:'POST',data:{email:credentials.email,password:'short'}})).status;if(status===429)break;}assert.equal(status,429);});
+});
