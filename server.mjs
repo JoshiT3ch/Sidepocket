@@ -74,7 +74,16 @@ async function api(req,res,url){
    if(!timingSafeEqual(key,stored)||!user)throw new HttpError(401,'Email or password is incorrect.');createSession(req,res,user);return send(res,200,{user:userView(user)});
  }
  if(url.pathname==='/api/auth/logout'&&req.method==='POST'){const current=session(req);if(current)db.prepare('DELETE FROM sessions WHERE token_hash=?').run(current.token_hash);res.setHeader('Set-Cookie',cookie('',0));return send(res,200,{ok:true});}
- if(url.pathname==='/api/profile'&&['GET','PUT'].includes(req.method)){const current=session(req);if(!current)throw new HttpError(401,'Please log in to continue.');if(req.method==='GET'){const profile=db.prepare('SELECT data FROM profiles WHERE user_id=?').get(current.id);return send(res,200,{profile:storedProfile(current.name,profile.data)});}const previous=db.prepare('SELECT data FROM profiles WHERE user_id=?').get(current.id);const profile=cleanProfile({...storedProfile(current.name,previous.data),...await body(req)});db.prepare('UPDATE profiles SET data=? WHERE user_id=?').run(JSON.stringify(profile),current.id);return send(res,200,{ok:true});}
+ if(url.pathname==='/api/profile'&&['GET','PUT'].includes(req.method)){
+   const current=session(req);if(!current)throw new HttpError(401,'Please log in to continue.');
+   const previous=db.prepare('SELECT data FROM profiles WHERE user_id=?').get(current.id);
+   const saved=storedProfile(current.name,previous.data);
+   if(req.method==='GET')return send(res,200,{profile:saved});
+   const incoming=await body(req);const next={...saved,...incoming};
+   if(Object.hasOwn(incoming,'characterType')&&incoming.characterType!==saved.characterType&&!Object.hasOwn(incoming,'hairStyle'))next.hairStyle=normalizeHair(next).hairStyle;
+   const profile=cleanProfile(next);
+   db.prepare('UPDATE profiles SET data=? WHERE user_id=?').run(JSON.stringify(profile),current.id);return send(res,200,{ok:true});
+ }
  throw new HttpError(404,'Not found.');
 }
 const server=http.createServer(async(req,res)=>{
