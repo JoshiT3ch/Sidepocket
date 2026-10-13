@@ -24,7 +24,7 @@ const SESSION_SECONDS=7*24*60*60;
 const derive=promisify(scrypt);
 const hashPassword=(password,salt)=>derive(password,salt,64,{N:65536,r:8,p:2,maxmem:128*1024*1024});
 const tokenHash=token=>createHash('sha256').update(token).digest('hex');
-const defaultProfile=name=>({name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',height:170,bodyType:'regular',avatarCreated:false,rating:1200,games:0,wins:0,history:[]});
+const defaultProfile=name=>({name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',height:170,bodyType:'regular',characterType:'male',avatarCreated:false,rating:1200,games:0,wins:0,history:[]});
 const limits=new Map();
 let activeHashes=0;
 class HttpError extends Error{constructor(status,message){super(message);this.status=status;}}
@@ -42,11 +42,12 @@ function cleanProfile(value){
  const name=typeof value.name==='string'?value.name.trim():'';if(name.length<1||name.length>24)throw new HttpError(400,'Use a player name between 1 and 24 characters.');
  if(!Number.isInteger(value.height)||value.height<120||value.height>220)throw new HttpError(400,'Choose a height between 120 and 220 cm.');
  if(!['lean','regular','broad'].includes(value.bodyType))throw new HttpError(400,'Choose an available body type.');
+ if(!['male','female'].includes(value.characterType))throw new HttpError(400,'Choose an available character style.');
  if(typeof value.avatarCreated!=='boolean')throw new HttpError(400,'Invalid avatar setup status.');
  for(const key of Object.keys(accepted))if(!accepted[key].includes(value[key]))throw new HttpError(400,'Choose an available character option.');
  if(!Number.isInteger(value.rating)||value.rating<100||value.rating>5000||!Number.isInteger(value.games)||value.games<0||value.games>1000000||!Number.isInteger(value.wins)||value.wins<0||value.wins>value.games)throw new HttpError(400,'Invalid demo statistics.');
  if(!Array.isArray(value.history)||value.history.length>20||value.history.some(x=>!x||typeof x.win!=='boolean'||!Number.isInteger(x.opponent)||x.opponent<100||x.opponent>3000||!Number.isInteger(x.delta)||Math.abs(x.delta)>32||!Number.isInteger(x.after)||x.after<100||x.after>5000))throw new HttpError(400,'Invalid demo game history.');
- return{name,skin:value.skin,shirt:value.shirt,paddle:value.paddle,hat:value.hat,height:value.height,bodyType:value.bodyType,avatarCreated:value.avatarCreated,rating:value.rating,games:value.games,wins:value.wins,history:value.history.map(x=>({win:x.win,opponent:x.opponent,delta:x.delta,after:x.after}))};
+ return{name,skin:value.skin,shirt:value.shirt,paddle:value.paddle,hat:value.hat,height:value.height,bodyType:value.bodyType,characterType:value.characterType,avatarCreated:value.avatarCreated,rating:value.rating,games:value.games,wins:value.wins,history:value.history.map(x=>({win:x.win,opponent:x.opponent,delta:x.delta,after:x.after}))};
 }
 async function api(req,res,url){
  if(req.method!=='GET'){

@@ -2,14 +2,16 @@
 (async () => {
 const account=await window.sideoutAuth.ready;
 if(!account)return;
-const defaults = {name:account.user.name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',height:170,bodyType:'regular',avatarCreated:false,rating:1200,games:0,wins:0,history:[]};
+const defaults = {name:account.user.name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',height:170,bodyType:'regular',characterType:'male',avatarCreated:false,rating:1200,games:0,wins:0,history:[]};
 const colors = {skin:[['#f1c49b','Light'],['#cf986c','Tan'],['#a96c4b','Warm'],['#704630','Deep']],shirt:[['#ed795d','Coral'],['#a6bce0','Sky'],['#ede8cd','Cream'],['#8da65d','Moss'],['#b59fc6','Lilac']],paddle:[['#7286bb','Blue'],['#ed795d','Coral'],['#d2e48e','Lime'],['#8f709d','Purple']]};
 const hats = [['none','No hat'],['cap','Cap'],['headband','Headband']];
 let state = {...defaults,history:[]};
 try {const saved=account.profile;if(saved && typeof saved==='object'){state.name=typeof saved.name==='string' ? saved.name.slice(0,24) : defaults.name;for(const key of Object.keys(colors))if(colors[key].some(([hex])=>hex===saved[key]))state[key]=saved[key];if(hats.some(([value])=>value===saved.hat))state.hat=saved.hat;if(Number.isInteger(saved.rating)&&saved.rating>=100&&saved.rating<=5000&&Number.isInteger(saved.games)&&saved.games>=0&&Number.isInteger(saved.wins)&&saved.wins>=0&&saved.wins<=saved.games){state.rating=saved.rating;state.games=saved.games;state.wins=saved.wins;state.history=Array.isArray(saved.history)?saved.history.filter(x=>x&&typeof x.win==='boolean'&&Number.isInteger(x.opponent)&&Number.isInteger(x.delta)&&Number.isInteger(x.after)).slice(0,20):[];}}}catch(e){}
 if(Number.isInteger(account.profile.height)&&account.profile.height>=120&&account.profile.height<=220)state.height=account.profile.height;
 if(['lean','regular','broad'].includes(account.profile.bodyType))state.bodyType=account.profile.bodyType;
+if(['male','female'].includes(account.profile.characterType))state.characterType=account.profile.characterType;
 state.avatarCreated=account.profile.avatarCreated===true;
+const characterLabels={male:'Male',female:'Female'};
 const bodyLabels={lean:'Lean',regular:'Regular',broad:'Broad'};
 let toastTimer;
 function toast(message){const element=document.getElementById('toast');element.textContent=message;element.classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>element.classList.remove('visible'),2600);}
@@ -23,24 +25,33 @@ function drawPlayer(ctx,cx,cy,scale){
   const widthFactor={lean:0.82,regular:1,broad:1.2}[state.bodyType];
   ctx.save();ctx.translate(cx-24*scale*widthFactor,cy-58*scale*heightFactor);ctx.scale(scale*widthFactor,scale*heightFactor);ctx.imageSmoothingEnabled=false;
   const outline='#30362d',skin=state.skin,shirt=state.shirt;
+  const female=state.characterType==='female';
+  const hair='#574134';
   // Each rectangle is a pixel block. One reusable character powers the profile and export.
   rect(ctx,6,57,38,3,'#9aaf62');rect(ctx,11,59,29,2,'#a9bf6b');
+  if(female){
+    // Ponytail sits behind the head and shoulders, including under a cap.
+    rect(ctx,33,6,7,7,hair);rect(ctx,36,11,7,9,hair);rect(ctx,38,20,4,5,hair);rect(ctx,35,9,4,3,shirt);
+  }
   rect(ctx,16,36,8,14,outline);rect(ctx,27,36,8,14,outline);
   rect(ctx,18,42,4,10,skin);rect(ctx,29,42,4,10,skin);
   rect(ctx,14,49,10,7,'#f5f0d7');rect(ctx,27,49,11,7,'#f5f0d7');
   rect(ctx,12,53,12,4,outline);rect(ctx,27,53,13,4,outline);
   rect(ctx,16,51,6,2,'#8da65d');rect(ctx,29,51,6,2,'#8da65d');
   rect(ctx,14,32,22,11,outline);rect(ctx,16,34,8,8,'#59644c');rect(ctx,27,34,7,8,'#59644c');
-  rect(ctx,12,18,26,18,outline);rect(ctx,14,20,22,14,shirt);
+  if(female){rect(ctx,13,18,24,10,outline);rect(ctx,15,27,20,9,outline);rect(ctx,15,20,20,8,shirt);rect(ctx,17,27,16,8,shirt);}
+  else{rect(ctx,12,18,26,18,outline);rect(ctx,14,20,22,14,shirt);}
   rect(ctx,10,21,6,9,shirt);rect(ctx,36,21,6,9,shirt);
   rect(ctx,8,28,7,12,outline);rect(ctx,10,28,4,11,skin);
   rect(ctx,37,28,7,11,outline);rect(ctx,38,28,5,9,skin);
-  rect(ctx,19,20,12,3,'#f1e9ce');rect(ctx,22,23,6,2,shirt);
-  rect(ctx,25,26,4,4,'#f6edcf');rect(ctx,14,33,22,2,'#e7e5c9');
+  if(female){rect(ctx,19,20,12,1,'#f1e9ce');rect(ctx,21,21,8,1,'#f1e9ce');rect(ctx,23,22,4,1,'#f1e9ce');}
+  else{rect(ctx,19,20,12,3,'#f1e9ce');rect(ctx,22,23,6,2,shirt);}
+  rect(ctx,25,26,4,4,'#f6edcf');rect(ctx,female?17:14,33,female?16:22,2,'#e7e5c9');
   rect(ctx,21,15,8,6,outline);rect(ctx,22,16,6,5,skin);
   rect(ctx,16,2,18,16,outline);rect(ctx,18,4,14,12,skin);
   rect(ctx,14,8,4,5,skin);rect(ctx,32,8,4,5,skin);
-  rect(ctx,19,4,12,3,'#574134');rect(ctx,17,5,3,5,'#574134');rect(ctx,30,5,3,5,'#574134');
+  rect(ctx,19,4,12,3,hair);rect(ctx,17,5,3,female?10:5,hair);rect(ctx,30,5,3,female?10:5,hair);
+  if(female){rect(ctx,16,11,2,7,hair);rect(ctx,32,11,2,7,hair);}
   rect(ctx,21,9,2,2,outline);rect(ctx,28,9,2,2,outline);rect(ctx,24,13,4,1,'#835b43');
   if(state.hat==='cap'){rect(ctx,16,1,18,4,'#f1ecd5');rect(ctx,18,-1,14,3,'#f1ecd5');rect(ctx,28,4,12,2,'#f1ecd5');rect(ctx,17,4,15,1,'#bebba2');rect(ctx,23,1,3,2,shirt);}
   if(state.hat==='headband'){rect(ctx,16,6,18,3,'#eee9d2');rect(ctx,33,7,4,2,'#eee9d2');rect(ctx,35,9,2,4,'#eee9d2');}
@@ -66,14 +77,16 @@ setupRange.value=state.height;
 document.getElementById('locker-height').value=state.height;
 document.getElementById('locker-body').value=state.bodyType;
 function syncAvatarControls(){
+  document.querySelectorAll('[data-character]').forEach(button=>button.setAttribute('aria-pressed',String(state.characterType===button.dataset.character)));
   document.querySelectorAll('#setup-body-options [data-body]').forEach(button=>button.setAttribute('aria-pressed',String(chosenBody===button.dataset.body)));
   const summary=document.getElementById('avatar-summary');
-  summary.textContent=setupHeight.value&&chosenBody?state.height+' cm · '+bodyLabels[state.bodyType]+' build':'Choose your height and build';
+  summary.textContent=setupHeight.value&&chosenBody?characterLabels[state.characterType]+' · '+state.height+' cm · '+bodyLabels[state.bodyType]+' build':'Choose your height and build';
   for(const key of ['skin','shirt']){
     const group=document.getElementById('setup-'+key+'-options');group.replaceChildren();
     for(const [hex,label]of colors[key]){const button=document.createElement('button');button.type='button';button.className='swatch';button.style.backgroundColor=hex;button.setAttribute('aria-label',label+' '+(key==='skin'?'skin tone':'jersey'));button.setAttribute('aria-pressed',String(state[key]===hex));button.addEventListener('click',()=>{state[key]=hex;render();});group.append(button);}
   }
 }
+document.querySelectorAll('[data-character]').forEach(button=>button.addEventListener('click',()=>{state.characterType=button.dataset.character;render();if(state.avatarCreated&&button.closest('#locker-character-options'))persist();}));
 function updateHeight(value){const height=Number(value);if(!Number.isInteger(height)||height<120||height>220)return false;state.height=height;setupHeight.value=height;setupRange.value=height;render();return true;}
 setupHeight.addEventListener('input',()=>updateHeight(setupHeight.value));
 setupRange.addEventListener('input',()=>updateHeight(setupRange.value));
