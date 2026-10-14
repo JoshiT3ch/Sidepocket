@@ -27,6 +27,7 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
   teams TEXT NOT NULL,created_by TEXT NOT NULL REFERENCES users(id),created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,
   reported_by TEXT REFERENCES users(id),completed_at INTEGER,winner_side TEXT CHECK(winner_side IN ('a','b')),deltas TEXT);
  CREATE INDEX IF NOT EXISTS play_matches_status ON play_matches(status,created_at);`);
+ db.exec('CREATE INDEX IF NOT EXISTS play_players_leaderboard ON play_players(rating DESC,wins DESC,games ASC,code ASC) WHERE games>0');
 
  function transaction(operation){db.exec('BEGIN IMMEDIATE');try{const result=operation();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}
  function fail(status,message){throw new HttpError(status,message);}
@@ -72,11 +73,28 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
   return{player:player(userId),duo:duoView(duoRow(userId)),invitations,matches,history};
  }
  function teamsFor(a,b){return{a:[player(a.player_a),player(a.player_b)],b:[player(b.player_a),player(b.player_b)]};}
+ function leaderboard(userId){
+  ladder(userId);
+  // The profile's demo statistics never participate in rank or eligibility.
+  const rows=db.prepare(`WITH ranked AS (
+   SELECT p.user_id,p.rating,p.wins,p.games,p.code,RANK() OVER(ORDER BY p.rating DESC) AS rank,COUNT(*) OVER() AS total
+   FROM play_players p JOIN profiles f ON f.user_id=p.user_id
+   WHERE p.games>0 AND json_extract(f.data,'$.avatarCreated')=1
+  ), leaders AS (SELECT * FROM ranked ORDER BY rating DESC,wins DESC,games ASC,code ASC LIMIT 100)
+  SELECT * FROM leaders UNION ALL SELECT * FROM ranked WHERE user_id=? AND user_id NOT IN(SELECT user_id FROM leaders)
+  ORDER BY rating DESC,wins DESC,games ASC,code ASC`).all(userId);
+  return{entries:rows.slice(0,100).map(row=>({rank:row.rank,player:player(row.user_id)})),
+   me:{rank:rows.find(row=>row.user_id===userId)?.rank??null,player:player(userId)},rankedPlayers:rows[0]?.total??0,limit:100};
+ }
 
  return async function handlePlay(req,res,url){
   const pathname=url.pathname;
-  if(!pathname.startsWith('/api/play')&&!pathname.startsWith('/api/players/')&&!pathname.startsWith('/api/duos')&&!pathname.startsWith('/api/matches'))return false;
+  if(pathname!=='/api/leaderboard'&&!pathname.startsWith('/api/play')&&!pathname.startsWith('/api/players/')&&!pathname.startsWith('/api/duos')&&!pathname.startsWith('/api/matches'))return false;
   const current=session(req);if(!current)fail(401,'Please log in to continue.');
+  if(pathname==='/api/leaderboard'){
+   if(req.method!=='GET')fail(404,'Not found.');
+   send(res,200,leaderboard(current.id));return true;
+  }
   requireReady(current.id);ladder(current.id);expire();
   const reply=(status=200)=>{send(res,status,playView(current.id));return true;};
   if(pathname==='/api/play'&&req.method==='GET')return reply();

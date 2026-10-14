@@ -21,6 +21,7 @@ function endpoint(path,options){
   if(path==='/api/profile'&&method==='GET')return{rpc:'sideout_profile',args:{},profile:true};
   if(path==='/api/profile'&&method==='PUT')return{rpc:'sideout_save_profile',args:{p_profile:body},save:true};
   if(path==='/api/play'&&method==='GET')return{rpc:'sideout_play',args:{}};
+  if(path==='/api/leaderboard'&&method==='GET')return{rpc:'sideout_leaderboard',args:{}};
   const player=path.match(/^\/api\/players\/(SO-[A-F0-9]{12})$/);
   if(player&&method==='GET')return{rpc:'sideout_player',args:{p_code:player[1]}};
   if(path==='/api/duos'&&method==='POST')return{rpc:'sideout_duo_invite',args:{p_code:body.playerCode}};

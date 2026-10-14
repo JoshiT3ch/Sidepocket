@@ -13,6 +13,7 @@ The private `sideout` schema contains profiles, players, duos, duo membership, i
 | `sideout_profile` | Read or initialize the current player's cosmetic profile |
 | `sideout_save_profile` | Validate and save the current player's cosmetics |
 | `sideout_play` | Read the current player's rating, duo, invitations, and matches |
+| `sideout_leaderboard` | Read the top 100 rated players and the current player's position |
 | `sideout_player` | Look up a player by their public QR code |
 | `sideout_duo_invite` | Invite another player as a teammate |
 | `sideout_duo_respond` | Accept or decline a received invitation |
@@ -62,6 +63,12 @@ The fixture checks:
 - Outsider denial, duplicate-result denial, and rollback when the accepted match snapshot is stale.
 
 The fixture passed against the configured project. No test users or games were retained. The JavaScript suite (`npm test`) separately checks the local backend and Supabase service contract, including Google OAuth redirects and errors; it does not run this live SQL fixture or complete a real Google login.
+
+## Leaderboard
+
+Apply `migrations/20261014150708_sideout_leaderboard.sql` after the original Sideout migration. The authenticated `public.sideout_leaderboard()` RPC returns `{entries:[{rank,player}],me:{rank,player},rankedPlayers,limit:100}`. It computes rank over all eligible players before limiting the displayed rows and includes the caller's position separately. Only completed avatars with at least one authoritative rated game qualify. Ratings alone determine shared competition ranks; wins, games, and player code order tied rows consistently.
+
+The RPC reuses the existing allowlisted player view and does not grant access to private tables or expose email addresses. `PUBLIC` and `anon` cannot execute it. The separate `tests/leaderboard.sql` fixture verifies eligibility, ties, the top-100 cutoff, the caller's position, and access restrictions inside a transaction that ends with `ROLLBACK`.
 
 ## Existing local data
 

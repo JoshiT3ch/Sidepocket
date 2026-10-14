@@ -59,6 +59,14 @@ The losing duo loses the winner's award, down to a minimum player rating of 100.
 
 Application tables live in the private `sideout` schema. Browser roles have no direct table access. The client calls a fixed list of authenticated PostgreSQL functions, each of which checks the signed-in player and the action's ownership or participation requirements. Accepted teams are retained in match snapshots, and a recorded result cannot be replayed.
 
+## Leaderboard
+
+Open **Leaderboard** to see the top 100 players in the Valencia community, ranked by their database-owned doubles MMR. Players qualify after completing their avatar and at least one rated game. New players remain unranked until that first result.
+
+Equal ratings share a competition rank (for example, 1, 1, 3). Wins, then fewer games, then player code provide a stable display order within a tie without changing the shared rank. Each row shows the player's pixel avatar, MMR, wins, games, and win rate. Your own position is available even when your row is outside the top 100. Reopen the page or use **Refresh** to load the latest results.
+
+The board is available to signed-in players. It shares the existing game display name and avatar, never email addresses or account credentials. It uses genuine rated results; profile demo statistics cannot affect placement.
+
 ## Validation
 
 Run the JavaScript tests with:

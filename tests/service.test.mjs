@@ -193,6 +193,19 @@ test('duo and match actions preserve server-authoritative rating and ownership c
   }
 });
 
+test('leaderboard uses only the authenticated fixed RPC and ignores client-chosen ratings or identity',async()=>{
+  const leaderboard={entries:[],me:{rank:null,player:{id,rating:1200,games:0}},rankedPlayers:0,limit:100};
+  const {service,calls}=fixture({rpcData:leaderboard});
+  assert.deepEqual(await service.request('/api/leaderboard',{body:{userId:'another-player',rating:9000,limit:1000}}),leaderboard);
+  assert.deepEqual(calls.at(-1),['rpc','sideout_leaderboard',{}]);
+  const before=calls.length;
+  await assert.rejects(service.request('/api/leaderboard',post({rating:9999})),{status:404});
+  await assert.rejects(service.request('/api/leaderboard?userId=another-player'),{status:404});
+  assert.equal(calls.length,before);
+  const expired=fixture({rpcError:{code:'PGRST301',message:'JWT expired'}});
+  await assert.rejects(expired.service.request('/api/leaderboard'),{status:401,message:'Please log in to continue.'});
+});
+
 test('unsupported routes and methods never call arbitrary database functions',async()=>{
   const {service,calls}=fixture();
   for(const [path,options] of [

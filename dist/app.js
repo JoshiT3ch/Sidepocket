@@ -22,6 +22,19 @@ state.avatarCreated=account.profile.avatarCreated===true;
 let matchStats=null;
 let playController=null;
 let playStarting=false;
+let leaderboardController=null;
+let leaderboardStarting=null;
+async function startLeaderboard(){
+  if(!state.avatarCreated)return;
+  if(leaderboardController)return leaderboardController.refresh();
+  if(leaderboardStarting)return leaderboardStarting;
+  leaderboardStarting=(async()=>{
+    try{const {initLeaderboard}=await import('./leaderboard.js');leaderboardController=initLeaderboard({onNavigate:navigate});await leaderboardController.refresh();}
+    catch(error){toast(error.message||'Could not open the leaderboard. Please try again.');}
+    finally{leaderboardStarting=null;}
+  })();
+  return leaderboardStarting;
+}
 async function startPlay(){
   if(!state.avatarCreated||playController||playStarting)return;
   playStarting=true;
@@ -62,7 +75,7 @@ function renderHistory(){
   }
 }
 function render(){document.querySelectorAll('.player-name').forEach(e=>e.textContent=state.name.trim()||defaults.name);document.querySelectorAll('[data-rating]').forEach(e=>e.textContent=matchStats?.rating??'—');document.querySelectorAll('[data-rank]').forEach(e=>e.textContent=rank());document.querySelectorAll('[data-games]').forEach(e=>e.textContent=matchStats?.games??0);document.querySelectorAll('[data-wins]').forEach(e=>e.textContent=matchStats?.wins??0);document.querySelectorAll('[data-winrate]').forEach(e=>e.textContent=matchStats?.games??0?Math.round(matchStats.wins/matchStats.games*100)+'%':'—');document.querySelector('.rating-track span').style.width=Math.min((matchStats?.games??0)/5*100,100)+'%';drawScene(document.getElementById('hero-avatar'));drawScene(document.getElementById('locker-avatar'));drawScene(document.getElementById('setup-avatar'));renderOptions();renderHistory();syncAvatarControls();renderWardrobe();}
-function navigate(page){if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();}
+function navigate(page){if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();}
 function fittedText(ctx,text,maxWidth,start,min){let size=start;do{ctx.font='600 '+size+'px "Space Grotesk", Arial, sans-serif';if(ctx.measureText(text).width<=maxWidth)break;size-=2;}while(size>min);return size;}
 function story(){const canvas=document.getElementById('story-canvas');const ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=false;rect(ctx,0,0,1080,1920,'#f5f4ed');rect(ctx,60,60,960,1800,'#d5ed8b');rect(ctx,60,1370,960,490,'#ed9275');ctx.textAlign='left';ctx.fillStyle='#232922';ctx.font='700 52px "Space Grotesk", Arial, sans-serif';ctx.fillText('sideout.',125,160);ctx.font='600 21px "DM Sans", Arial, sans-serif';ctx.fillText('VALENCIA CITY, BUKIDNON',125,218);ctx.fillStyle='#bfd56f';ctx.font='700 190px "Space Grotesk", Arial, sans-serif';ctx.fillText('LET’S',115,478);ctx.fillText('PLAY.',115,655);ctx.fillStyle='#b8cd72';ctx.beginPath();ctx.ellipse(540,1102,295,42,0,0,Math.PI*2);ctx.fill();drawPlayer(ctx,515,1125,11);ctx.textAlign='center';ctx.fillStyle='#232922';const name=state.name.trim()||defaults.name;fittedText(ctx,name,790,63,28);ctx.fillText(name,540,1260);ctx.font='600 21px "DM Sans", Arial, sans-serif';ctx.fillText('YOUR GAME. YOUR CHARACTER.',540,1320);ctx.font='600 21px "DM Sans", Arial, sans-serif';ctx.fillText('SIDEOUT RATING',540,1455);ctx.font='500 148px "Space Grotesk", Arial, sans-serif';ctx.fillText(matchStats?.rating??'—',540,1620);ctx.font='500 26px "DM Sans", Arial, sans-serif';ctx.fillText(rank(),540,1685);ctx.font='600 20px "DM Sans", Arial, sans-serif';ctx.fillText('PLAY LOCAL. SHOW YOUR STYLE.',540,1800);return canvas;}
 let chosenBody=state.avatarCreated?state.bodyType:null;
