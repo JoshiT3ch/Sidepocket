@@ -47,8 +47,9 @@ function providerError(error){
 function signInRedirect(location){
   const url=new URL(location?.href||'http://localhost:3000/');
   const player=(url.searchParams.get('player')||(url.hash.startsWith('#connect/')?url.hash.slice(9):'')).toUpperCase();
-  url.search='';url.hash='#profile';
-  if(/^SO-[A-F0-9]{12}$/.test(player||'')){url.searchParams.set('player',player);url.hash='#play';}
+  // Supabase appends its own token fragment; app navigation starts after SDK initialization.
+  url.search='';url.hash='';
+  if(/^SO-[A-F0-9]{12}$/.test(player||''))url.searchParams.set('player',player);
   return url.href;
 }
 

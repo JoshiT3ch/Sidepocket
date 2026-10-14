@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import vm from 'node:vm';
 import {createService} from '../dist/service.js';
 
 const configuration={provider:'supabase',url:'https://test-sideout.supabase.co',publishableKey:'sb_publishable_browser_test'};
@@ -61,7 +63,7 @@ test('Google sign-in uses only the configured provider and a same-origin player 
   assert.deepEqual(result,{redirecting:true});
   assert.deepEqual(calls.slice(1),[
     ['settings',configuration.url+'/auth/v1/settings',{method:'GET',headers:{apikey:configuration.publishableKey},credentials:'omit',cache:'no-store',redirect:'error'}],
-    ['signInWithOAuth',{provider:'google',options:{redirectTo:`https://sideout.example/?player=${playerCode}#play`}}]
+    ['signInWithOAuth',{provider:'google',options:{redirectTo:`https://sideout.example/?player=${playerCode}`}}]
   ]);
 });
 
@@ -94,11 +96,27 @@ test('invalid player links and injected destinations are removed before Google s
   ]){
     const {service,calls}=fixture({href});
     await service.request('/api/auth/google',post({redirectTo:'https://evil.example'}));
-    assert.deepEqual(calls.at(-1),['signInWithOAuth',{provider:'google',options:{redirectTo:'https://sideout.example/#profile'}}]);
+    assert.deepEqual(calls.at(-1),['signInWithOAuth',{provider:'google',options:{redirectTo:'https://sideout.example/'}}]);
   }
   const legacy=fixture({href:`https://sideout.example/#connect/${playerCode.toLowerCase()}`});
   await legacy.service.request('/api/auth/google',post({}));
-  assert.equal(legacy.calls.at(-1)[1].options.redirectTo,`https://sideout.example/?player=${playerCode}#play`);
+  assert.equal(legacy.calls.at(-1)[1].options.redirectTo,`https://sideout.example/?player=${playerCode}`);
+});
+
+test('Supabase implicit callback remains recognizable to the bundled SDK after its token fragment is appended',async()=>{
+  const source=await readFile(new URL('../dist/vendor/supabase-2.117.3.js',import.meta.url),'utf8');
+  const sdk=vm.runInNewContext(source.replace(/export const createClient = supabase\.createClient;/,'')+';supabase;');
+  for(const href of ['https://sideout.example/#login',`https://sideout.example/?player=${playerCode}#signup`]){
+    const {service,calls}=fixture({href});
+    await service.request('/api/auth/google',post({}));
+    const redirect=calls.at(-1)[1].options.redirectTo;
+    // This is Auth's AsRedirectURL behavior, using synthetic tokens only.
+    const callback=new URL(redirect+'#access_token=synthetic-access&refresh_token=synthetic-refresh&expires_in=3600&token_type=bearer');
+    const params=Object.fromEntries(new URLSearchParams(callback.hash.slice(1)));
+    assert.equal(sdk.AuthClient.prototype._isImplicitGrantCallback.call({detectSessionInUrl:true},params),true);
+    assert.equal(params.access_token,'synthetic-access');
+    assert.equal(callback.searchParams.get('player'),href.includes('?player=')?playerCode:null);
+  }
 });
 
 test('cloud email and password submissions are rejected without sending an email or password request',async()=>{

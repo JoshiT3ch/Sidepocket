@@ -99,6 +99,7 @@
     // Read the callback through the SDK before removing its navigation parameters.
     if(oauthFailure){const url=new URL(location.href);['error','error_code','error_description'].forEach(key=>url.searchParams.delete(key));history.replaceState(null,'',url);}
     authenticated=!!account;initializing=false;
+    if(account&&(!location.hash||['#login','#signup'].includes(location.hash)))history.replaceState(null,'',afterSignIn());
     document.getElementById('auth-loader').hidden=true;document.body.classList.remove('auth-loading');document.getElementById('player-app').hidden=!account;document.getElementById('auth-view').hidden=!!account;document.getElementById('logout').hidden=!account;
     if(!account){showMode(location.hash==='#signup'?'signup':'login');if(failure||oauthFailure){error(oauthFailure||failure);if(!oauthFailure){submit.disabled=true;googleButton.disabled=true;}}}
     return account;
