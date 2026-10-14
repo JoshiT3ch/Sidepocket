@@ -1,8 +1,16 @@
-# Sidepocket / Sideout
+# Sideout
 
-A pickleball website prototype with accounts, custom pixel avatars, player QR codes, doubles matches, and saved ratings.
+A pickleball website for the Valencia City, Bukidnon community: accounts, custom pixel avatars, player QR codes, doubles matches, and saved ratings. The GitHub repository is named Sidepocket.
 
-## Run locally
+## Website and Supabase
+
+The website is a static build in `dist/`. Its default connection in `dist/connection.js` uses the **Sideout** Supabase project (`pbfqudxyjklntneipjpq`) at `https://pbfqudxyjklntneipjpq.supabase.co`. Supabase Auth handles email/password accounts and sessions; PostgreSQL handles profiles, player codes, duos, matches, and ratings. A Node server is not required by the hosted website.
+
+The browser uses a publishable key. This key is intentionally public; service-role keys, secret keys, database passwords, and SMTP credentials must never be placed in `dist/` or committed. The pinned Supabase browser SDK is served locally from `dist/vendor/`; its version, checksum, and license are recorded in `dist/vendor/SUPABASE-PROVENANCE.md`.
+
+Deployment and email setup are separate steps. Before inviting public signups, finish the production Auth settings described in `supabase/README.md`: set the published Site URL and allowed confirmation redirects, configure custom SMTP, and verify a real confirmation email returns to the website. The public launch URL is not recorded here yet. Password recovery is not implemented in this interface.
+
+## Preview locally
 
 Use Node.js 24 or newer. From the website folder, run:
 
@@ -10,11 +18,21 @@ Use Node.js 24 or newer. From the website folder, run:
 npm start
 ```
 
-Open http://127.0.0.1:3000. Leave the terminal running; Ctrl+C stops the server. No dependency installation is needed. Opening HTML directly or using a separate static preview server does not provide the account or match APIs.
+Open `http://127.0.0.1:3000`. Leave the terminal running; Ctrl+C stops the server. No dependency installation is needed. With the default connection, this preview uses the same Supabase project as the hosted website. Another static HTTP server can also serve `dist/`; opening the HTML with a `file:` URL is unsupported.
+
+For the optional, separate SQLite development backend, replace the contents of `dist/connection.js` with:
+
+```js
+export default {provider: 'local'};
+```
+
+Then use `npm start`. Local mode requires this Node server for its account and match APIs. Restore the Supabase configuration before publishing. Existing `.data/sideout.sqlite` files are preserved, excluded from Git and static access, and **are not imported into Supabase**. Local accounts, passwords, ratings, and cloud accounts are separate; previous local players need to create a cloud account.
 
 ## Accounts and characters
 
-Sign up, then create an avatar with a character type, height, and body type. Male and female hairstyles have separate choices; both support six hair colors. The locker includes 40 clothing pieces across caps, shirts, shorts, and pants, with Nike and Adidas choices. Avatars and outfits are saved per account and appear on the profile and downloadable story card.
+Sign up and, when email confirmation is enabled, confirm the account before logging in. The website shows a check-email message while confirmation is pending. First-time players must create an avatar with character type, height, and body type before playing.
+
+Male and female hairstyles have separate choices; both support six hair colors. The locker includes 40 clothing pieces across caps, shirts, shorts, and pants, with Nike and Adidas choices. Avatars and outfits are saved per account and appear on the profile and downloadable story card.
 
 ## QR codes and doubles
 
@@ -24,11 +42,9 @@ Choose **Invite as my duo** to send a teammate invitation. Once they accept, bot
 
 Scan a player from another duo and choose **Challenge their duo**. A player on that duo accepts the challenge. Any of the four participants can then select the winning duo and record the result. One submission updates all four ratings immediately; there is no additional result confirmation. The match records who submitted it, the winner, and each player's before/after rating. Completed results cannot be submitted again. Unplayed games can be cancelled without changing ratings.
 
-Pending duo invitations and challenges expire after 24 hours. An active game must be finished or cancelled before its players can start another game or change duos.
+Pending duo invitations and challenges expire after 24 hours. An active game must be finished or cancelled before its players can start another game or change duos. Players must use the same Supabase project and a shared website address. Live camera scanning requires HTTPS or a trusted local context; photo scanning and code entry are alternatives.
 
-All players must connect to the same server and database. The default localhost address works only on the computer running the server. Phone-to-phone play needs a shared website address; live camera scanning needs HTTPS or a trusted local context. Photo scanning and code entry provide camera-free alternatives. Publishing requires a persistent database and appropriate PUBLIC_ORIGIN and COOKIE_SECURE configuration.
-
-## Ratings
+## Ratings and data ownership
 
 Rated doubles MMR starts at **1200** and uses the average rating of each duo. A win awards **20–40 points to each teammate**:
 
@@ -37,18 +53,20 @@ Rated doubles MMR starts at **1200** and uses the average rating of each duo. A 
 - A 1200-average duo beats a 1600-average duo: **+38** each.
 - Very large rating differences approach **+20** for the favorite and **+40** for the underdog.
 
-The losing duo loses the winner's award, down to a minimum player rating of 100. Winning ratings have no 5000-point ceiling. Profile statistics, rated match history, and story cards use this server-owned rating. Avatar changes and client profile edits cannot change it. Older demo statistics remain stored separately and are not imported into rated MMR.
+The losing duo loses the winner's award, down to a minimum player rating of 100. Winning ratings have no 5000-point ceiling. PostgreSQL calculates and commits all four changes in one transaction. Profile statistics, rated match history, and story cards use this database-owned rating. Cosmetic profile updates cannot edit MMR, wins, or played-game counts. Older demo statistics remain separate and are not imported into rated MMR.
 
-## Storage and tests
+Application tables live in the private `sideout` schema. Browser roles have no direct table access. The client calls a fixed list of authenticated PostgreSQL functions, each of which checks the signed-in player and the action's ownership or participation requirements. Accepted teams are retained in match snapshots, and a recorded result cannot be replayed.
 
-Accounts, sessions, profiles, player codes, duos, and matches are stored in .data/sideout.sqlite; this folder is excluded from Git and static access. Passwords use salted scrypt hashes. Sessions use random tokens in HttpOnly, SameSite cookies, with hashed tokens stored in the database. Mutation requests require the expected origin and application header. Email verification and password reset are not included.
+## Validation
 
-Run:
+Run the JavaScript tests with:
 
 ```powershell
 npm test
 ```
 
-Tests cover authentication, avatar validation and migration, account isolation, genuine QR pixel decoding, doubles pairing, result authorization, all four rating updates, duplicate submissions, expiry, cancellation, and transaction rollback.
+The release passed **54 JavaScript tests**, covering the local backend and the Supabase service contract. These cover authentication, confirmation states, avatar validation, account isolation, genuine QR pixel decoding, pairing, result authorization, all four rating updates, duplicate submissions, expiry, cancellation, and transaction rollback.
 
-QR libraries are vendored for offline use. Their pinned source versions and licenses are documented in dist/vendor/README.md.
+`supabase/tests/sideout.sql` is the separate PostgreSQL acceptance fixture. It was executed successfully against the Sideout project as a transaction that ends in `ROLLBACK`; no fixture users or games remain. See `supabase/README.md` for its scope and how to run it.
+
+QR library licenses and pinned sources are documented in `dist/vendor/README.md`.

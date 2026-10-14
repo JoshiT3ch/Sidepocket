@@ -22,12 +22,7 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
  const includesMe=players=>players.some(isMine);
  const ownedSide=match=>includesMe(match.teams.a)?'a':'b';
  const mutableButton=(label,callback,className='play-small-button')=>{const button=el('button',className,label);button.type='button';button.disabled=busy;button.addEventListener('click',callback);return button;};
- const api=async(path,body)=>{
-  const response=await fetch(path,{credentials:'same-origin',headers:body!==undefined?{'Content-Type':'application/json','X-Sideout-Request':'1'}:{},...(body!==undefined?{method:'POST',body:JSON.stringify(body)}:{})});
-  let result;try{result=await response.json();}catch{throw new Error('Could not reach the clubhouse. Try again.');}
-  if(!response.ok)throw new Error(result.error||'That action could not be completed. Try again.');
-  return result;
- };
+ const api=async(path,body)=>window.sideoutService.request(path,body!==undefined?{method:'POST',body:JSON.stringify(body)}:{});
  const person=(player,delta=null)=>{
   const row=el('div','play-person'),canvas=el('canvas');canvas.width=120;canvas.height=144;canvas.setAttribute('role','img');canvas.setAttribute('aria-label',`${player.name}'s pixel character`);
   const copy=el('div','play-person-copy');copy.append(el('strong','',`${player.name}${isMine(player)?' · You':''}`),el('span','play-rating',`${player.rating} MMR`));

@@ -8,11 +8,13 @@ import {randomBytes, randomUUID, scrypt, timingSafeEqual, createHash} from 'node
 import {promisify} from 'node:util';
 import {DatabaseSync} from 'node:sqlite';
 import {createPlayStore} from './play-store.mjs';
+import connection from './dist/connection.js';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const staticRoot=path.join(root,'dist');
 const port=Number(process.env.PORT||3000);
 const host=process.env.HOST||'127.0.0.1';
+const cloudOrigin=connection.provider==='supabase'?new URL(connection.url).origin:'';
 const origins=new Set(process.env.PUBLIC_ORIGIN?[new URL(process.env.PUBLIC_ORIGIN).origin]:[`http://127.0.0.1:${port}`,`http://localhost:${port}`]);
 const secureCookie=process.env.COOKIE_SECURE==='true'||process.env.PUBLIC_ORIGIN?.startsWith('https://');
 const cookieName=secureCookie?'__Host-sideout_session':'sideout_session';
@@ -91,7 +93,7 @@ async function api(req,res,url){
 const handlePlay=createPlayStore({db,session,body,send,HttpError,storedProfile});
 const server=http.createServer(async(req,res)=>{
  res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');
- res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+ res.setHeader('Content-Security-Policy',`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ${cloudOrigin}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`);
  try{
    const url=new URL(req.url,'http://localhost');
    if(url.pathname.startsWith('/api/')){await api(req,res,url);return;}
