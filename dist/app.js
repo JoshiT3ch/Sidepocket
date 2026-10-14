@@ -4,6 +4,7 @@ const account=await window.sideoutAuth.ready;
 if(!account)return;
 const {WARDROBE,DEFAULT_EQUIPMENT,CATEGORY_LABELS,getItem,outfitItems}=await import('./wardrobe.js');
 const {drawAvatar,drawClothingThumbnail,drawHairThumbnail}=await import('./pixel-player.js');
+const {STORY_TEMPLATES,drawStoryCard,storyFilename}=await import('./story-card.js');
 const {HAIRSTYLES,HAIR_COLORS,normalizeHair,hairstylesFor}=await import('./hairstyles.js');
 const defaults = {name:account.user.name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',height:170,bodyType:'regular',characterType:'male',avatarCreated:false,rating:1200,games:0,wins:0,history:[]};
 const colors = {skin:[['#f1c49b','Light'],['#cf986c','Tan'],['#a96c4b','Warm'],['#704630','Deep']],shirt:[['#ed795d','Coral'],['#a6bce0','Sky'],['#ede8cd','Cream'],['#8da65d','Moss'],['#b59fc6','Lilac']],paddle:[['#7286bb','Blue'],['#ed795d','Coral'],['#d2e48e','Lime'],['#8f709d','Purple']]};
@@ -54,7 +55,6 @@ function persist(){const snapshot=structuredClone(state);snapshot.name=snapshot.
 window.sideoutFlush=()=>saveQueue;
 function rank(){return matchStats?matchStats.games<5?'Finding your level':'Rating established':'Loading your rating';}
 function rect(ctx,x,y,w,h,color){ctx.fillStyle=color;ctx.fillRect(x,y,w,h);}
-function drawPlayer(ctx,cx,cy,scale){drawAvatar(ctx,cx,cy,scale*0.65,state);}
 function drawScene(canvas){const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);const w=canvas.width,h=canvas.height;ctx.fillStyle='#bbd074';ctx.beginPath();ctx.ellipse(w*.53,h*.81,w*.26,h*.05,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#e5f1b4';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(w*.1,h*.87);ctx.lineTo(w*.85,h*.87);ctx.moveTo(w*.76,h*.62);ctx.lineTo(w*.91,h*.89);ctx.stroke();drawAvatar(ctx,w*.52,h*.80,Math.min(w/90,h/135),state);rect(ctx,w*.27,h*.78,12,12,'#f5f1cc');rect(ctx,w*.27+3,h*.78+3,2,2,'#9eae65');rect(ctx,w*.27+7,h*.78+7,2,2,'#9eae65');}
 function renderOptions(){for(const key of ['skin','paddle']){const group=document.getElementById(key+'-options');group.replaceChildren();for(const [hex,label]of colors[key]){const button=document.createElement('button');button.className='swatch';button.style.backgroundColor=hex;button.setAttribute('aria-label',label+' '+(key==='skin'?'skin tone':key==='shirt'?'jersey':'paddle'));button.setAttribute('aria-pressed',String(state[key]===hex));button.title=label;button.addEventListener('click',()=>{state[key]=hex;persist();render();});group.append(button);}}const group=document.getElementById('hat-options');group.replaceChildren();for(const [value,label]of hats){const button=document.createElement('button');button.className='item-button';button.textContent=label;button.setAttribute('aria-pressed',String(state.hat===value));button.addEventListener('click',()=>{state.hat=value;persist();render();});group.append(button);}}
 function renderHistory(){
@@ -74,10 +74,10 @@ function renderHistory(){
     const after=document.createElement('span');after.textContent=result.after+' MMR';row.append(label,delta,after);root.append(row);
   }
 }
-function render(){document.querySelectorAll('.player-name').forEach(e=>e.textContent=state.name.trim()||defaults.name);document.querySelectorAll('[data-rating]').forEach(e=>e.textContent=matchStats?.rating??'—');document.querySelectorAll('[data-rank]').forEach(e=>e.textContent=rank());document.querySelectorAll('[data-games]').forEach(e=>e.textContent=matchStats?.games??0);document.querySelectorAll('[data-wins]').forEach(e=>e.textContent=matchStats?.wins??0);document.querySelectorAll('[data-winrate]').forEach(e=>e.textContent=matchStats?.games??0?Math.round(matchStats.wins/matchStats.games*100)+'%':'—');document.querySelector('.rating-track span').style.width=Math.min((matchStats?.games??0)/5*100,100)+'%';drawScene(document.getElementById('hero-avatar'));drawScene(document.getElementById('locker-avatar'));drawScene(document.getElementById('setup-avatar'));renderOptions();renderHistory();syncAvatarControls();renderWardrobe();}
+function render(){document.querySelectorAll('.player-name').forEach(e=>e.textContent=state.name.trim()||defaults.name);document.querySelectorAll('[data-rating]').forEach(e=>e.textContent=matchStats?.rating??'—');document.querySelectorAll('[data-rank]').forEach(e=>e.textContent=rank());document.querySelectorAll('[data-games]').forEach(e=>e.textContent=matchStats?.games??0);document.querySelectorAll('[data-wins]').forEach(e=>e.textContent=matchStats?.wins??0);document.querySelectorAll('[data-winrate]').forEach(e=>e.textContent=matchStats?.games??0?Math.round(matchStats.wins/matchStats.games*100)+'%':'—');document.querySelector('.rating-track span').style.width=Math.min((matchStats?.games??0)/5*100,100)+'%';drawScene(document.getElementById('hero-avatar'));drawScene(document.getElementById('locker-avatar'));drawScene(document.getElementById('setup-avatar'));renderOptions();renderHistory();syncAvatarControls();renderWardrobe();if(document.getElementById('story-dialog').open){renderStoryChoices();story();}}
 function navigate(page){if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();}
-function fittedText(ctx,text,maxWidth,start,min){let size=start;do{ctx.font='600 '+size+'px "Space Grotesk", Arial, sans-serif';if(ctx.measureText(text).width<=maxWidth)break;size-=2;}while(size>min);return size;}
-function story(){const canvas=document.getElementById('story-canvas');const ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=false;rect(ctx,0,0,1080,1920,'#f5f4ed');rect(ctx,60,60,960,1800,'#d5ed8b');rect(ctx,60,1370,960,490,'#ed9275');ctx.textAlign='left';ctx.fillStyle='#232922';ctx.font='700 52px "Space Grotesk", Arial, sans-serif';ctx.fillText('sideout.',125,160);ctx.font='600 21px "DM Sans", Arial, sans-serif';ctx.fillText('VALENCIA CITY, BUKIDNON',125,218);ctx.fillStyle='#bfd56f';ctx.font='700 190px "Space Grotesk", Arial, sans-serif';ctx.fillText('LET’S',115,478);ctx.fillText('PLAY.',115,655);ctx.fillStyle='#b8cd72';ctx.beginPath();ctx.ellipse(540,1102,295,42,0,0,Math.PI*2);ctx.fill();drawPlayer(ctx,515,1125,11);ctx.textAlign='center';ctx.fillStyle='#232922';const name=state.name.trim()||defaults.name;fittedText(ctx,name,790,63,28);ctx.fillText(name,540,1260);ctx.font='600 21px "DM Sans", Arial, sans-serif';ctx.fillText('YOUR GAME. YOUR CHARACTER.',540,1320);ctx.font='600 21px "DM Sans", Arial, sans-serif';ctx.fillText('SIDEOUT RATING',540,1455);ctx.font='500 148px "Space Grotesk", Arial, sans-serif';ctx.fillText(matchStats?.rating??'—',540,1620);ctx.font='500 26px "DM Sans", Arial, sans-serif';ctx.fillText(rank(),540,1685);ctx.font='600 20px "DM Sans", Arial, sans-serif';ctx.fillText('PLAY LOCAL. SHOW YOUR STYLE.',540,1800);return canvas;}
+let storyTemplate=STORY_TEMPLATES[0].id;
+function story(){const canvas=drawStoryCard(document.getElementById('story-canvas'),{profile:state,stats:matchStats,template:storyTemplate});const choice=STORY_TEMPLATES.find(item=>item.id===storyTemplate);canvas.setAttribute('aria-label',`${choice.name} story card for ${state.name.trim()||defaults.name}, with your pixel character and current doubles rating`);return canvas;}
 let chosenBody=state.avatarCreated?state.bodyType:null;
 const setupHeight=document.getElementById('setup-height');
 const setupRange=document.getElementById('setup-height-range');
@@ -176,8 +176,47 @@ document.getElementById('nickname').value=state.name;
 document.getElementById('nickname').addEventListener('input',e=>{state.name=e.target.value;persist();document.querySelectorAll('.player-name').forEach(el=>el.textContent=state.name.trim()||defaults.name);});
 document.getElementById('save-look').addEventListener('click',async()=>{const heightInput=document.getElementById('locker-height');if(!heightInput.checkValidity()){heightInput.closest('details').open=true;heightInput.reportValidity();return;}state.height=Number(heightInput.value);state.name=state.name.trim()||defaults.name;document.getElementById('nickname').value=state.name;const saved=await persist();render();if(saved)toast('Your look is saved. See you on the court.');navigate('profile');});
 document.getElementById('random-look').addEventListener('click',()=>{const pick=items=>items[Math.floor(Math.random()*items.length)];state.capId=pick(WARDROBE.caps).id;const shirt=pick(WARDROBE.shirts);state.shirtId=shirt.id;state.shirt=shirt.color;state.bottomId=pick([...WARDROBE.shorts,...WARDROBE.pants]).id;state.hat='cap';persist();render();toast('A fresh court fit, just for you.');});
-const dialog=document.getElementById('story-dialog');document.getElementById('share-open').addEventListener('click',async()=>{if(document.fonts)await document.fonts.ready;story();dialog.showModal();});document.getElementById('share-close').addEventListener('click',()=>dialog.close());dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
-document.getElementById('download-story').addEventListener('click',()=>{story().toBlob(blob=>{if(!blob){toast('Could not create the card. Try again.');return;}const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='sideout-story.png';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);toast('Story card downloaded. Upload it to your story.');},'image/png');});
+const dialog=document.getElementById('story-dialog');
+const templateChoices=document.getElementById('story-templates');
+function renderStoryChoices(){
+  const source=document.createElement('canvas');
+  for(const choice of STORY_TEMPLATES){
+    const button=templateChoices.querySelector(`[data-story-template="${choice.id}"]`);
+    button.setAttribute('aria-pressed',String(storyTemplate===choice.id));
+    const thumbnail=button.querySelector('canvas'),ctx=thumbnail.getContext('2d');
+    drawStoryCard(source,{profile:state,stats:matchStats,template:choice.id});
+    ctx.clearRect(0,0,thumbnail.width,thumbnail.height);ctx.drawImage(source,0,0,thumbnail.width,thumbnail.height);
+  }
+}
+for(const choice of STORY_TEMPLATES){
+  const button=document.createElement('button');button.type='button';button.className='story-template';button.dataset.storyTemplate=choice.id;
+  button.setAttribute('aria-pressed',String(storyTemplate===choice.id));button.setAttribute('aria-controls','story-canvas');
+  const thumbnail=document.createElement('canvas');thumbnail.width=108;thumbnail.height=192;thumbnail.setAttribute('aria-hidden','true');
+  const copy=document.createElement('span');copy.className='story-template-copy';
+  const name=document.createElement('strong');name.textContent=choice.name;const description=document.createElement('span');description.textContent=choice.description;copy.append(name,description);
+  const check=document.createElement('span');check.className='story-template-check';check.textContent='✓';check.setAttribute('aria-hidden','true');
+  button.append(thumbnail,copy,check);button.addEventListener('click',()=>{storyTemplate=choice.id;renderStoryChoices();story();document.getElementById('story-selection-status').textContent=choice.name+' selected.';});templateChoices.append(button);
+}
+document.getElementById('share-open').addEventListener('click',async()=>{
+  const button=document.getElementById('share-open');button.disabled=true;
+  try{if(document.fonts)await document.fonts.ready;renderStoryChoices();story();if(!dialog.open)dialog.showModal();}
+  catch{toast('Could not open the story editor. Please try again.');}
+  finally{button.disabled=false;}
+});
+document.getElementById('share-close').addEventListener('click',()=>dialog.close());dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
+document.getElementById('download-story').addEventListener('click',async()=>{
+  const button=document.getElementById('download-story');button.disabled=true;
+  // Freeze the choice, look and server stats together so an in-flight export stays consistent.
+  const selected=storyTemplate,profile=structuredClone(state),stats=matchStats?structuredClone(matchStats):null;
+  try{
+    if(document.fonts)await document.fonts.ready;
+    const canvas=drawStoryCard(document.createElement('canvas'),{profile,stats,template:selected});
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+    if(!blob)throw new Error('Could not create the card.');
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=storyFilename(selected);document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);toast('Story card downloaded. Upload it to your story.');
+  }catch{toast('Could not create the card. Please try again.');}
+  finally{button.disabled=false;}
+});
 render();navigate(location.hash.slice(1));await startPlay();
 
 })();

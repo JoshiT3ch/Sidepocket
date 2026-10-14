@@ -59,6 +59,12 @@ The losing duo loses the winner's award, down to a minimum player rating of 100.
 
 Application tables live in the private `sideout` schema. Browser roles have no direct table access. The client calls a fixed list of authenticated PostgreSQL functions, each of which checks the signed-in player and the action's ownership or participation requirements. Accepted teams are retained in match snapshots, and a recorded result cannot be replayed.
 
+## Story card templates
+
+Open **My player → Make my story card** and choose **Rally Shot**, **Court Pose**, or **Player Card**. Rally Shot captures a paddle swing with a ball trail on a pixel court. Court Pose puts the character on the court for a player portrait. Player Card keeps the simple clubhouse poster.
+
+Each template uses the player's current character, hair, equipped clothing, and authoritative doubles rating. Preview the selected design, then download its 1080 × 1920 PNG and upload it to Instagram or Facebook Stories. Choosing a template changes the card artwork only and does not change the saved avatar or rating.
+
 ## Leaderboard
 
 Open **Leaderboard** to see the top 100 players in the Valencia community, ranked by their database-owned doubles MMR. Players qualify after completing their avatar and at least one rated game. New players remain unranked until that first result.
