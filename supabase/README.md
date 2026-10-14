@@ -26,17 +26,28 @@ These functions use `SECURITY DEFINER` with an empty search path, qualified sche
 
 Profiles and ladder records initialize on authenticated use. Avatar completion is required for play. Cosmetic profile fields cannot assign real ratings. Result submission locks the match and players, validates the accepted team snapshot, computes the 20–40-point award from the two duo averages, and commits the result once. An error rolls back every player's update.
 
-## Production Auth setup
+## Production Google Auth setup
 
-The database and browser connection are implemented and tested. These deployment settings still need to be completed and verified before public email signup is ready:
+The hosted interface is Google-first: **Continue with Google** creates an account or signs in an existing player. Cloud email/password form submissions are rejected by the browser service; the optional local SQLite backend and its email/password forms remain available. This interface change does not disable Supabase email-confirmation protections.
 
-1. In **Authentication → URL Configuration**, set **Site URL** to the actual published HTTPS website origin.
-2. Add the website's confirmation destinations to **Redirect URLs**. The client returns ordinary signups to `/#profile` and player links to `/?player=SO-…#play`. Preserve other required redirects and use rules restricted to the published website. Keep localhost redirects only while they are needed for development.
-3. Keep email/password signup enabled and configure email confirmation for the intended launch policy. The interface supports the pending-confirmation state.
-4. Configure **custom SMTP** with the selected sender and provider credentials in the Supabase dashboard. Supabase's default sender only sends to project-team addresses and is unsuitable for general public signup. See [custom SMTP documentation](https://supabase.com/docs/guides/auth/auth-smtp).
-5. Verify a signup with a real address the tester controls: receive the confirmation, return to the published website, create an avatar, log out, and log back in. For a QR signup link, also verify that the selected player is retained after confirmation.
+The Supabase **Site URL** is already configured as `https://sideout-valencia.dchiligan.chatgpt.site`. Its redirect allowlist is restricted to that website, including player-link queries and callback fragments. Ordinary sign-ins return to `/#profile`; valid player links return to `/?player=SO-…#play`. Keep any development-only localhost redirects out of production settings unless they are actively needed. See [Supabase redirect URL matching rules](https://supabase.com/docs/guides/auth/redirect-urls).
 
-See [Supabase redirect URL documentation](https://supabase.com/docs/guides/auth/redirect-urls) for matching rules. SMTP credentials and privileged Supabase keys belong only in the appropriate dashboard or protected server environment, never in this repository or the static build. This release does not add a password-recovery screen.
+Google OAuth project/provider configuration is in progress. A successful live Google → Supabase → Sideout login has not yet been verified. Finish and check these settings before announcing Google login as ready:
+
+1. In Google Cloud, use a Google Auth Platform project with an **External** audience and publish it **In production** for the public launch.
+2. Configure only the basic identity scopes: `openid`, `email` (`https://www.googleapis.com/auth/userinfo.email`), and `profile` (`https://www.googleapis.com/auth/userinfo.profile`). Do not add Gmail, Drive, or other sensitive/restricted scopes.
+3. Create a **Web application** OAuth client with this exact **Authorized JavaScript origin**: `https://sideout-valencia.dchiligan.chatgpt.site`.
+4. Set this exact **Authorized redirect URI**: `https://pbfqudxyjklntneipjpq.supabase.co/auth/v1/callback`. This is the Supabase callback, not a Sideout page.
+5. Save the Google client ID and client secret in the project's **Authentication → Sign In / Providers → Google** settings and enable that provider. The secret belongs only in Supabase, never in `dist/`, browser code, this repository, or screenshots. Keep nonce checks and email-verification protections enabled.
+6. From the production website, complete a sign-in with a Google account the tester controls. Verify the return to Sideout, mandatory avatar creation, profile save, logout, and subsequent login. Repeat from a valid player QR link to confirm its destination survives the OAuth round trip. Also verify cancellation returns a usable sign-in screen.
+
+The existing database supports Google users without another SQL migration: profiles initialize from the authenticated user ID, use a safe display-name fallback when provider metadata is absent, and require avatar completion before play.
+
+A purchased domain and custom SMTP are not prerequisites for this basic Google login. Google permits published external apps using only basic identity scopes without verified branding; the consent screen will show the shared Supabase auth domain (`pbfqudxyjklntneipjpq.supabase.co`) instead of verified Sideout branding. Custom domains and brand verification are recommended improvements. Do not claim ownership of the shared `supabase.co` or `chatgpt.site` domains when configuring verification. Workspace administrators can still block apps for their users. See [Supabase Google setup](https://supabase.com/docs/guides/auth/social-login/auth-google), [Google OAuth app states](https://developers.google.com/identity/protocols/oauth2/production-readiness/overview), and [Google brand verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification).
+
+## Optional email Auth later
+
+Resend/custom SMTP can be added later if the cloud interface restores email/password signup, password recovery, or other transactional emails. Supabase's default sender only serves project-team addresses and is unsuitable for general public email signup. A sending provider needs an appropriate verified sender domain; that is separate from hosting Sideout at its existing free website address. Keep provider credentials in the Supabase dashboard or a protected server environment and verify a real confirmation email returns to the production website before enabling that flow. See [Supabase custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp). This release does not add a password-recovery screen.
 
 ## PostgreSQL acceptance fixture
 
@@ -50,7 +61,7 @@ The fixture checks:
 - Four-player rating updates for a favorite win (+22), upset (+38), and equal duos (+30), the 100-point floor, and progression beyond 5000.
 - Outsider denial, duplicate-result denial, and rollback when the accepted match snapshot is stale.
 
-The fixture passed against the configured project. No test users or games were retained. The JavaScript suite (`npm test`) separately passed 54 tests, including 12 Supabase service-contract tests; it does not itself run this live SQL fixture.
+The fixture passed against the configured project. No test users or games were retained. The JavaScript suite (`npm test`) separately checks the local backend and Supabase service contract, including Google OAuth redirects and errors; it does not run this live SQL fixture or complete a real Google login.
 
 ## Existing local data
 

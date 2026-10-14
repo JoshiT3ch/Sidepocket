@@ -16,6 +16,7 @@ function endpoint(path,options){
   if(path==='/api/auth/session'&&method==='GET')return{auth:'session'};
   if(path==='/api/auth/signup'&&method==='POST')return{auth:'signup',body};
   if(path==='/api/auth/login'&&method==='POST')return{auth:'login',body};
+  if(path==='/api/auth/google'&&method==='POST')return{auth:'google'};
   if(path==='/api/auth/logout'&&method==='POST')return{auth:'logout'};
   if(path==='/api/profile'&&method==='GET')return{rpc:'sideout_profile',args:{},profile:true};
   if(path==='/api/profile'&&method==='PUT')return{rpc:'sideout_save_profile',args:{p_profile:body},save:true};
@@ -37,15 +38,15 @@ function endpoint(path,options){
 }
 function publicUser(user){
   if(!user)return null;
-  return{id:user.id,email:user.email||'',name:String(user.user_metadata?.name||'Player').slice(0,24)};
+  return{id:user.id,email:user.email||'',name:String(user.user_metadata?.name||user.user_metadata?.full_name||'Player').slice(0,24)};
 }
 function providerError(error){
   const unauthenticated=[401,'401'].includes(error.status)||['PGRST301','PGRST303','bad_jwt','session_not_found','refresh_token_not_found','refresh_token_already_used'].includes(error.code)||error.name==='AuthSessionMissingError';
   return new ServiceError(unauthenticated?'Please log in to continue.':error.message||'That action could not be completed. Try again.',unauthenticated?401:Number(error.status)||400);
 }
-function confirmationRedirect(location){
+function signInRedirect(location){
   const url=new URL(location?.href||'http://localhost:3000/');
-  const player=url.searchParams.get('player')?.toUpperCase();
+  const player=(url.searchParams.get('player')||(url.hash.startsWith('#connect/')?url.hash.slice(9):'')).toUpperCase();
   url.search='';url.hash='#profile';
   if(/^SO-[A-F0-9]{12}$/.test(player||'')){url.searchParams.set('player',player);url.hash='#play';}
   return url.href;
@@ -56,7 +57,8 @@ export function createService(config,{createClient,fetchImpl=globalThis.fetch,lo
     provider:'local',
     onAuthStateChange:()=>({unsubscribe(){}}),
     async request(path,options={}){
-      endpoint(path,options);
+      const route=endpoint(path,options);
+      if(route.auth==='google')throw new ServiceError('Google sign-in is available on the hosted Sideout website.',400);
       let response;try{response=await fetchImpl(path,{...options,credentials:'same-origin',headers:{'Content-Type':'application/json','X-Sideout-Request':'1',...options.headers}});}catch{throw new ServiceError('Could not connect. Start the website server and try again.',503);}
       let data;try{data=await response.json();}catch{throw new ServiceError('The account service is unavailable. Please try again.',503);}
       if(!response.ok)throw new ServiceError(data.error||'Please try again.',response.status);
@@ -90,16 +92,23 @@ export function createService(config,{createClient,fetchImpl=globalThis.fetch,lo
         }
         return{user:publicUser(verified.data?.user)};
       }
-      if(route.auth==='signup'){
-        const {email,password,name}=route.body;
-        const result=await client.auth.signUp({email:String(email||'').trim().toLowerCase(),password,options:{data:{name:String(name||'').trim()},emailRedirectTo:confirmationRedirect(location)}});
-        if(result.error)throw providerError(result.error);
-        return{user:publicUser(result.data?.user),requiresConfirmation:!result.data?.session};
-      }
-      if(route.auth==='login'){
-        const result=await client.auth.signInWithPassword({email:String(route.body.email||'').trim().toLowerCase(),password:route.body.password});
-        if(result.error)throw providerError(result.error);
-        return{user:publicUser(result.data?.user)};
+      if(route.auth==='signup'||route.auth==='login')throw new ServiceError('Use Continue with Google to join or log in to Sideout.',400);
+      if(route.auth==='google'){
+        // Auth exposes this public setting so an unfinished provider stays on our sign-in screen.
+        let settings;
+        try{
+          const response=await fetchImpl(url.origin+'/auth/v1/settings',{method:'GET',headers:{apikey:config.publishableKey},credentials:'omit',cache:'no-store',redirect:'error'});
+          if(!response.ok)throw new Error();
+          settings=await response.json();
+          if(typeof settings?.external?.google!=='boolean')throw new Error();
+        }catch{throw new ServiceError('Google sign-in is unavailable right now. Please try again shortly.',503);}
+        if(!settings.external.google)throw new ServiceError('Google sign-in is still being set up. Please try again later.',503);
+        // Only our Google provider and this page's origin can select the destination.
+        let result;
+        try{result=await client.auth.signInWithOAuth({provider:'google',options:{redirectTo:signInRedirect(location)}});}
+        catch{throw new ServiceError('Google sign-in is unavailable right now. Please try again shortly.',503);}
+        if(result.error)throw new ServiceError('Google sign-in could not start. Please try again shortly.',Number(result.error.status)||400);
+        return{redirecting:true};
       }
       if(route.auth==='logout'){
         const result=await client.auth.signOut({scope:'local'});

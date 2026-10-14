@@ -6,20 +6,27 @@ const configuration={provider:'supabase',url:'https://test-sideout.supabase.co',
 const id='d29e97d9-37c0-4d27-ab22-02adbdbd6bc8';
 const playerCode='SO-012345ABCDEF';
 const user={id,email:'player@example.invalid',user_metadata:{name:'Court Player'}};
-function fixture({session=null,authError=null,rpcError=null,rpcData={}}={}){
+function fixture({session=null,authError=null,rpcError=null,rpcData={},account=user,href=`https://sideout.example/?player=${playerCode}&discard=1#signup`,settings={external:{google:true}},settingsStatus=200,fetchError=null,jsonError=null}={}){
   const calls=[];
   const client={
     auth:{
       async getSession(){calls.push(['getSession']);return{data:{session},error:null};},
-      async getUser(){calls.push(['getUser']);return{data:{user},error:authError};},
+      async getUser(){calls.push(['getUser']);return{data:{user:account},error:authError};},
       async signUp(input){calls.push(['signUp',input]);return{data:{user,session},error:authError};},
       async signInWithPassword(input){calls.push(['signInWithPassword',input]);return{data:{user,session},error:authError};},
+      async signInWithOAuth(input){calls.push(['signInWithOAuth',input]);return{data:{provider:'google',url:'https://account-service.example/authorize?secret=not-returned'},error:authError};},
       async signOut(input){calls.push(['signOut',input]);return{error:null};},
       onAuthStateChange(callback){calls.push(['subscriber',callback]);return{data:{subscription:{unsubscribe(){}}}};}
     },
     async rpc(name,args){calls.push(['rpc',name,args]);return{data:rpcData,error:rpcError};}
   };
-  const service=createService(configuration,{createClient:(...input)=>{calls.push(['createClient',...input]);return client;},location:{href:`https://sideout.example/?player=${playerCode}&discard=1#signup`}});
+  const service=createService(configuration,{
+    createClient:(...input)=>{calls.push(['createClient',...input]);return client;},location:{href},
+    fetchImpl:async(...input)=>{
+      calls.push(['settings',...input]);if(fetchError)throw fetchError;
+      return{ok:settingsStatus>=200&&settingsStatus<300,status:settingsStatus,json:async()=>{if(jsonError)throw jsonError;return settings;}};
+    }
+  });
   return{service,calls,client};
 }
 const post=body=>({method:'POST',body:JSON.stringify(body)});
@@ -48,21 +55,77 @@ test('remote configuration accepts only HTTPS public connections and delegates r
   ])assert.throws(()=>createService(config,{createClient:()=>assert.fail('Privileged credentials must never reach the SDK.')}),{status:503});
 });
 
-test('unconfirmed signup returns an explicit pending state and preserves the player link in its confirmation redirect',async()=>{
+test('Google sign-in uses only the configured provider and a same-origin player redirect',async()=>{
   const {service,calls}=fixture();
-  const result=await service.request('/api/auth/signup',post({email:' PLAYER@example.invalid ',password:'strong-password',name:' Court Player '}));
-  assert.equal(result.requiresConfirmation,true);
-  assert.deepEqual(calls[1],['signUp',{email:'player@example.invalid',password:'strong-password',options:{data:{name:'Court Player'},emailRedirectTo:`https://sideout.example/?player=${playerCode}#play`}}]);
+  const result=await service.request('/api/auth/google',post({provider:'github',redirectTo:'https://evil.example',queryParams:{access_type:'offline'}}));
+  assert.deepEqual(result,{redirecting:true});
+  assert.deepEqual(calls.slice(1),[
+    ['settings',configuration.url+'/auth/v1/settings',{method:'GET',headers:{apikey:configuration.publishableKey},credentials:'omit',cache:'no-store',redirect:'error'}],
+    ['signInWithOAuth',{provider:'google',options:{redirectTo:`https://sideout.example/?player=${playerCode}#play`}}]
+  ]);
 });
 
-test('confirmed signup and password login return the verified account shape',async()=>{
-  const {service,calls}=fixture({session:{access_token:'not-exposed'}});
-  const signup=await service.request('/api/auth/signup',post({email:user.email,password:'strong-password',name:'Court Player'}));
-  assert.equal(signup.requiresConfirmation,false);
-  assert.deepEqual(signup.user,{id,email:user.email,name:'Court Player'});
-  const login=await service.request('/api/auth/login',post({email:' PLAYER@example.invalid ',password:'strong-password',userId:'ignored'}));
-  assert.deepEqual(login,{user:{id,email:user.email,name:'Court Player'}});
-  assert.deepEqual(calls.at(-1),['signInWithPassword',{email:user.email,password:'strong-password'}]);
+test('an unfinished Google provider stays on Sideout without opening an OAuth error page',async()=>{
+  const {service,calls}=fixture({settings:{external:{google:false}}});
+  await assert.rejects(service.request('/api/auth/google',post({})),{status:503,message:'Google sign-in is still being set up. Please try again later.'});
+  assert.deepEqual(calls.map(call=>call[0]),['createClient','settings']);
+});
+
+test('unavailable or malformed Auth settings fail closed before Google navigation',async()=>{
+  for(const options of [
+    {fetchError:new Error('Network contains access_token=private')},
+    {settingsStatus:401},
+    {settingsStatus:503},
+    {jsonError:new SyntaxError('Not JSON')},
+    {settings:null},
+    {settings:{}},
+    {settings:{external:{google:'true'}}}
+  ]){
+    const {service,calls}=fixture(options);
+    await assert.rejects(service.request('/api/auth/google',post({})),{status:503,message:'Google sign-in is unavailable right now. Please try again shortly.'});
+    assert.deepEqual(calls.map(call=>call[0]),['createClient','settings']);
+  }
+});
+
+test('invalid player links and injected destinations are removed before Google sign-in',async()=>{
+  for(const href of [
+    'https://sideout.example/?player=https%3A%2F%2Fevil.example&redirectTo=https%3A%2F%2Fevil.example#signup',
+    'https://sideout.example/?player=SO-012345ABCDEF%2F..&token=private#access_token=private'
+  ]){
+    const {service,calls}=fixture({href});
+    await service.request('/api/auth/google',post({redirectTo:'https://evil.example'}));
+    assert.deepEqual(calls.at(-1),['signInWithOAuth',{provider:'google',options:{redirectTo:'https://sideout.example/#profile'}}]);
+  }
+  const legacy=fixture({href:`https://sideout.example/#connect/${playerCode.toLowerCase()}`});
+  await legacy.service.request('/api/auth/google',post({}));
+  assert.equal(legacy.calls.at(-1)[1].options.redirectTo,`https://sideout.example/?player=${playerCode}#play`);
+});
+
+test('cloud email and password submissions are rejected without sending an email or password request',async()=>{
+  const {service,calls}=fixture();
+  for(const path of ['/api/auth/signup','/api/auth/login'])await assert.rejects(service.request(path,post({email:user.email,password:'strong-password'})),{status:400,message:'Use Continue with Google to join or log in to Sideout.'});
+  assert.equal(calls.length,1);
+});
+
+test('local email accounts stay available and Google sign-in never calls a nonexistent local API',async()=>{
+  const calls=[];
+  const service=createService({provider:'local'},{fetchImpl:async(...input)=>{calls.push(input);return{ok:true,status:200,json:async()=>({user})};}});
+  for(const path of ['/api/auth/signup','/api/auth/login'])assert.deepEqual(await service.request(path,post({email:user.email,password:'strong-password'})),{user});
+  await assert.rejects(service.request('/api/auth/google',post({})),{status:400,message:'Google sign-in is available on the hosted Sideout website.'});
+  assert.deepEqual(calls.map(call=>call[0]),['/api/auth/signup','/api/auth/login']);
+});
+
+test('Google errors remain readable without exposing provider URLs or credentials',async()=>{
+  const failed=fixture({authError:{status:400,message:'OAuth URL contains access_token=private'}});
+  await assert.rejects(failed.service.request('/api/auth/google',post({})),{status:400,message:'Google sign-in could not start. Please try again shortly.'});
+  const offline=fixture();
+  offline.client.auth.signInWithOAuth=async()=>{throw new Error('Secret provider failure');};
+  await assert.rejects(offline.service.request('/api/auth/google',post({})),{status:503,message:'Google sign-in is unavailable right now. Please try again shortly.'});
+});
+
+test('verified Google profile names provide the initial player name without exposing account tokens',async()=>{
+  const {service}=fixture({session:{access_token:'not-exposed'},account:{...user,user_metadata:{full_name:'Google Court Player'}}});
+  assert.deepEqual(await service.request('/api/auth/session'),{user:{id,email:user.email,name:'Google Court Player'}});
 });
 
 test('session check waits for initialization then verifies the stored identity with Auth',async()=>{

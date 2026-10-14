@@ -4,11 +4,11 @@ A pickleball website for the Valencia City, Bukidnon community: accounts, custom
 
 ## Website and Supabase
 
-The website is a static build in `dist/`. Its default connection in `dist/connection.js` uses the **Sideout** Supabase project (`pbfqudxyjklntneipjpq`) at `https://pbfqudxyjklntneipjpq.supabase.co`. Supabase Auth handles email/password accounts and sessions; PostgreSQL handles profiles, player codes, duos, matches, and ratings. A Node server is not required by the hosted website.
+The public website is [Sideout](https://sideout-valencia.dchiligan.chatgpt.site). It is a static build in `dist/`. Its default connection in `dist/connection.js` uses the **Sideout** Supabase project (`pbfqudxyjklntneipjpq`) at `https://pbfqudxyjklntneipjpq.supabase.co`. The cloud interface uses **Continue with Google** for account creation and sign-in; PostgreSQL handles profiles, player codes, duos, matches, and ratings. A Node server is not required by the hosted website.
 
 The browser uses a publishable key. This key is intentionally public; service-role keys, secret keys, database passwords, and SMTP credentials must never be placed in `dist/` or committed. The pinned Supabase browser SDK is served locally from `dist/vendor/`; its version, checksum, and license are recorded in `dist/vendor/SUPABASE-PROVENANCE.md`.
 
-Deployment and email setup are separate steps. Before inviting public signups, finish the production Auth settings described in `supabase/README.md`: set the published Site URL and allowed confirmation redirects, configure custom SMTP, and verify a real confirmation email returns to the website. The public launch URL is not recorded here yet. Password recovery is not implemented in this interface.
+Google login does not require a purchased website domain or signup confirmation emails. The production Supabase Site URL and redirect allowlist are already configured for the free website address. Google OAuth project/provider configuration and an end-to-end production login still need verification; see `supabase/README.md` for the exact settings. Resend/custom SMTP is optional future work if email/password signup is restored. Password recovery is not implemented in this interface.
 
 ## Preview locally
 
@@ -30,7 +30,9 @@ Then use `npm start`. Local mode requires this Node server for its account and m
 
 ## Accounts and characters
 
-Sign up and, when email confirmation is enabled, confirm the account before logging in. The website shows a check-email message while confirmation is pending. First-time players must create an avatar with character type, height, and body type before playing.
+On the hosted website, **Continue with Google** creates an account on the first successful sign-in and opens the existing account on later visits. Both routes use the same button. The cloud interface does not expose email/password signup or login. First-time players must create an avatar with character type, height, and body type before playing.
+
+The optional local SQLite mode retains its separate email/password forms and backend. Switching the cloud interface to Google does not migrate local accounts, change stored local passwords, or disable Supabase email-confirmation protections.
 
 Male and female hairstyles have separate choices; both support six hair colors. The locker includes 40 clothing pieces across caps, shirts, shorts, and pants, with Nike and Adidas choices. Avatars and outfits are saved per account and appear on the profile and downloadable story card.
 
@@ -65,7 +67,7 @@ Run the JavaScript tests with:
 npm test
 ```
 
-The release passed **54 JavaScript tests**, covering the local backend and the Supabase service contract. These cover authentication, confirmation states, avatar validation, account isolation, genuine QR pixel decoding, pairing, result authorization, all four rating updates, duplicate submissions, expiry, cancellation, and transaction rollback.
+The JavaScript suite covers the local backend and the Supabase service contract: authentication, Google OAuth redirects and errors, the cloud email/password guard, avatar validation, account isolation, genuine QR pixel decoding, pairing, result authorization, all four rating updates, duplicate submissions, expiry, cancellation, and transaction rollback. Passing these tests does not verify the live Google OAuth project or a successful production callback; that requires the manual check in `supabase/README.md`.
 
 `supabase/tests/sideout.sql` is the separate PostgreSQL acceptance fixture. It was executed successfully against the Sideout project as a transaction that ends in `ROLLBACK`; no fixture users or games remain. See `supabase/README.md` for its scope and how to run it.
 
