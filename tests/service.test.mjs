@@ -234,6 +234,74 @@ test('leaderboard uses only the authenticated fixed RPC and ignores client-chose
   await assert.rejects(expired.service.request('/api/leaderboard'),{status:401,message:'Please log in to continue.'});
 });
 
+test('court actions use fixed RPC arguments and never forward client-chosen ownership, rating or presence times',async()=>{
+  const courts={courts:[{id:'paddle-grove',name:'Paddle Grove',players:[]}],me:null};
+  const {service,calls}=fixture({rpcData:courts});
+  const forged={userId:'another-player',rating:9999,checkedInAt:'2099-01-01',expiresAt:'2099-12-31',p_user_id:'another-player'};
+  for(const [path,options,name,args] of [
+    ['/api/courts',{body:forged},'sideout_courts',{p_court_id:null}],
+    ['/api/courts/paddle-grove',{body:forged},'sideout_courts',{p_court_id:'paddle-grove'}],
+    ['/api/courts/check-in',post({...forged,courtId:'paddle-grove',status:'playing',openPlay:true}),'sideout_court_check_in',{p_court_id:'paddle-grove',p_status:'playing',p_open_play:true}],
+    ['/api/courts/check-in',post({...forged,courtId:'the-bodega',status:'practice',openPlay:false}),'sideout_court_check_in',{p_court_id:'the-bodega',p_status:'practice',p_open_play:false}],
+    ['/api/courts/leave',post({...forged,courtId:'paddle-grove'}),'sideout_court_leave',{p_court_id:'paddle-grove'}],
+    ['/api/courts/leave',post(forged),'sideout_court_leave',{p_court_id:null}]
+  ]){
+    assert.deepEqual(await service.request(path,options),courts);
+    assert.deepEqual(calls.at(-1),['rpc',name,args]);
+  }
+  // The transport must not coerce invalid input into an apparently valid presence.
+  await service.request('/api/courts/check-in',post({courtId:'paddle-grove',status:'invalid',openPlay:'false'}));
+  assert.deepEqual(calls.at(-1),['rpc','sideout_court_check_in',{p_court_id:'paddle-grove',p_status:'invalid',p_open_play:'false'}]);
+});
+
+test('court routes reject query injection, encoded traversal, malformed slugs and unsupported methods before RPC access',async()=>{
+  const {service,calls}=fixture();
+  for(const [path,options={}] of [
+    ['/api/courts?userId=another-player'],
+    ['/api/courts/paddle-grove?expires=never'],
+    ['/api/courts/paddle-grove#other-player'],
+    ['/api/courts/%2e%2e'],
+    ['/api/courts/paddle-grove%2F..'],
+    ['/api/courts/../profile'],
+    ['/api/courts/Paddle-Grove'],
+    ['/api/courts/-paddle-grove'],
+    ['/api/courts/paddle--grove'],
+    ['/api/courts/paddle-grove/'],
+    [`/api/courts/${'a'.repeat(81)}`],
+    ['/api/courts',post({})],
+    ['/api/courts/paddle-grove',post({})],
+    ['/api/courts/check-in'],
+    ['/api/courts/leave'],
+    ['/api/courts/check-in',{method:'PUT',body:'{}'}],
+    ['/api/courts/leave',{method:'DELETE'}]
+  ])await assert.rejects(service.request(path,options),{status:404});
+  assert.equal(calls.length,1);
+  const valid=fixture();
+  await valid.service.request(`/api/courts/${'a'.repeat(80)}`);
+  assert.deepEqual(valid.calls.at(-1),['rpc','sideout_courts',{p_court_id:'a'.repeat(80)}]);
+});
+
+test('local court transport keeps the same routes, origin credentials and mutation headers',async()=>{
+  const calls=[];
+  const service=createService({provider:'local'},{fetchImpl:async(...input)=>{calls.push(input);return{ok:true,status:200,json:async()=>({courts:[]})};}});
+  for(const [path,options] of [
+    ['/api/courts',{}],
+    ['/api/courts/paddle-grove',{}],
+    ['/api/courts/check-in',post({courtId:'paddle-grove',status:'idle',openPlay:true})],
+    ['/api/courts/leave',post({courtId:'paddle-grove'})]
+  ]){
+    assert.deepEqual(await service.request(path,options),{courts:[]});
+    const observed=calls.at(-1);
+    assert.equal(observed[0],path);
+    assert.equal(observed[1].credentials,'same-origin');
+    assert.equal(observed[1].headers['X-Sideout-Request'],'1');
+    assert.equal(observed[1].body,options.body);
+  }
+  await assert.rejects(service.request('/api/courts?userId=another-player'),{status:404});
+  await assert.rejects(service.request('/api/courts/check-in',{method:'DELETE'}),{status:404});
+  assert.equal(calls.length,4);
+});
+
 test('unsupported routes and methods never call arbitrary database functions',async()=>{
   const {service,calls}=fixture();
   for(const [path,options] of [

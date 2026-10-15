@@ -1,5 +1,6 @@
 import {randomBytes,randomUUID} from 'node:crypto';
 import {ratingPreview,matchDeltas} from './rating.mjs';
+import {COURTS,COURT_STATUSES,COURT_TTL_MINUTES,COURT_ROSTER_LIMIT} from './dist/courts-data.js';
 
 const INVITATION_LIFETIME=24*60*60*1000;
 const AVATAR_FIELDS=['skin','shirt','paddle','hat','height','bodyType','characterType','hairStyle','hairColor','capId','shirtId','bottomId'];
@@ -33,6 +34,18 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
   reported_by TEXT REFERENCES users(id),completed_at INTEGER,winner_side TEXT CHECK(winner_side IN ('a','b')),deltas TEXT);
  CREATE INDEX IF NOT EXISTS play_matches_status ON play_matches(status,created_at);`);
  db.exec('CREATE INDEX IF NOT EXISTS play_players_leaderboard ON play_players(rating DESC,wins DESC,games ASC,code ASC) WHERE games>0');
+ db.exec(`CREATE TABLE IF NOT EXISTS court_catalog(
+  id TEXT PRIMARY KEY,name TEXT NOT NULL,address TEXT NOT NULL,maps_url TEXT NOT NULL,sort_order INTEGER NOT NULL UNIQUE);
+ CREATE TABLE IF NOT EXISTS court_checkins(
+  user_id TEXT PRIMARY KEY REFERENCES play_players(user_id) ON DELETE CASCADE,
+  court_id TEXT NOT NULL REFERENCES court_catalog(id),
+  status TEXT NOT NULL CHECK(status IN ('playing','idle','practice')),
+  open_play INTEGER NOT NULL CHECK(open_play IN (0,1)),
+  checked_in_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,
+  CHECK(checked_in_at<=updated_at),CHECK(expires_at=updated_at+7200000));
+ CREATE INDEX IF NOT EXISTS court_checkins_court_expiry ON court_checkins(court_id,expires_at,updated_at DESC,user_id);`);
+ const saveCourt=db.prepare('INSERT INTO court_catalog(id,name,address,maps_url,sort_order) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,address=excluded.address,maps_url=excluded.maps_url,sort_order=excluded.sort_order');
+ COURTS.forEach((court,index)=>saveCourt.run(court.id,court.name,court.address,court.mapsUrl,index));
 
  function transaction(operation){db.exec('BEGIN IMMEDIATE');try{const result=operation();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}
  function fail(status,message){throw new HttpError(status,message);}
@@ -79,6 +92,20 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
   return{player:player(userId),duo:duoView(duoRow(userId)),invitations,matches,history};
  }
  function teamsFor(a,b){return{a:[player(a.player_a),player(a.player_b)],b:[player(b.player_a),player(b.player_b)]};}
+ function courtId(value,{optional=false}={}){
+  if(optional&&(value===undefined||value===null))return null;
+  if(typeof value!=='string'||!COURTS.some(court=>court.id===value))fail(404,'Court not found. Choose a court from the list.');
+  return value;
+ }
+ function courtCheckin(row){return row?{courtId:row.court_id,status:row.status,openPlay:!!row.open_play,checkedInAt:row.checked_in_at,updatedAt:row.updated_at,expiresAt:row.expires_at}:null;}
+ function courtsView(userId,selectedCourtId=null,now=Date.now()){
+  const counts=db.prepare('SELECT court_id,COUNT(*) AS players,SUM(open_play) AS openPlayers FROM court_checkins WHERE expires_at>? GROUP BY court_id').all(now);
+  const courts=COURTS.map(court=>{const count=counts.find(row=>row.court_id===court.id);return{...court,playerCount:count?.players??0,openPlayCount:count?.openPlayers??0};});
+  const rows=selectedCourtId?db.prepare('SELECT * FROM court_checkins WHERE court_id=? AND expires_at>? ORDER BY (user_id=?) DESC,updated_at DESC,user_id ASC LIMIT ?').all(selectedCourtId,now,userId,COURT_ROSTER_LIMIT):[];
+  const players=rows.map(row=>{const {courtId,...checkIn}=courtCheckin(row);return{player:player(row.user_id),...checkIn};});
+  const own=db.prepare('SELECT * FROM court_checkins WHERE user_id=? AND expires_at>?').get(userId,now);
+  return{courts,selectedCourtId,players,me:{player:player(userId),checkIn:courtCheckin(own)},serverTime:now,ttlMinutes:COURT_TTL_MINUTES,rosterLimit:COURT_ROSTER_LIMIT};
+ }
  function leaderboard(userId){
   ladder(userId);
   // The profile's demo statistics never participate in rank or eligibility.
@@ -95,8 +122,34 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
 
  return async function handlePlay(req,res,url){
   const pathname=url.pathname;
-  if(pathname!=='/api/leaderboard'&&!pathname.startsWith('/api/play')&&!pathname.startsWith('/api/players/')&&!pathname.startsWith('/api/duos')&&!pathname.startsWith('/api/matches'))return false;
+  if(pathname!=='/api/leaderboard'&&!pathname.startsWith('/api/play')&&!pathname.startsWith('/api/players/')&&!pathname.startsWith('/api/duos')&&!pathname.startsWith('/api/matches')&&pathname!=='/api/courts'&&!pathname.startsWith('/api/courts/'))return false;
   const current=session(req);if(!current)fail(401,'Please log in to continue.');
+  if(pathname==='/api/courts'||pathname.startsWith('/api/courts/')){
+   ladder(current.id);
+   if(pathname==='/api/courts'&&req.method==='GET'){send(res,200,courtsView(current.id));return true;}
+   if(pathname==='/api/courts/check-in'&&req.method==='POST'){
+    const data=await body(req),selected=courtId(data.courtId);
+    if(!COURT_STATUSES.includes(data.status))fail(400,'Choose Playing, Idle, or Practicing.');
+    if(typeof data.openPlay!=='boolean')fail(400,'Choose whether you are available for open play.');
+    const snapshot=transaction(()=>{
+     if(!profileFor(current.id)?.avatarCreated)fail(409,'Create your avatar before checking in to a court.');
+     const now=Date.now(),previous=db.prepare('SELECT * FROM court_checkins WHERE user_id=?').get(current.id);
+     const checkedInAt=previous?.court_id===selected&&previous.expires_at>now?previous.checked_in_at:now;
+     db.prepare(`INSERT INTO court_checkins(user_id,court_id,status,open_play,checked_in_at,updated_at,expires_at) VALUES(?,?,?,?,?,?,?)
+      ON CONFLICT(user_id) DO UPDATE SET court_id=excluded.court_id,status=excluded.status,open_play=excluded.open_play,
+       checked_in_at=excluded.checked_in_at,updated_at=excluded.updated_at,expires_at=excluded.expires_at`).run(current.id,selected,data.status,data.openPlay?1:0,checkedInAt,now,now+COURT_TTL_MINUTES*60000);
+     return courtsView(current.id,selected,now);
+    });send(res,200,snapshot);return true;
+   }
+   if(pathname==='/api/courts/leave'&&req.method==='POST'){
+    const data=await body(req),selected=courtId(data.courtId,{optional:true});
+    const snapshot=transaction(()=>{db.prepare('DELETE FROM court_checkins WHERE user_id=?').run(current.id);return courtsView(current.id,selected);});
+    send(res,200,snapshot);return true;
+   }
+   const route=/^\/api\/courts\/([^/]+)$/.exec(pathname);
+   if(route&&req.method==='GET'){send(res,200,courtsView(current.id,courtId(decodeURIComponent(route[1]))));return true;}
+   fail(404,'Not found.');
+  }
   if(pathname==='/api/leaderboard'){
    if(req.method!=='GET')fail(404,'Not found.');
    send(res,200,leaderboard(current.id));return true;

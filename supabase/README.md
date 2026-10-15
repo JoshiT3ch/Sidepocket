@@ -87,6 +87,14 @@ The browser carries `?duo=UUID` through login, Google OAuth and avatar creation.
 
 Advisor review retains the existing RPC architecture: private tables intentionally have no client RLS policies or direct grants, and authenticated callers intentionally execute narrow `SECURITY DEFINER` gateways whose helpers check identity and ownership. See the [RLS notice](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy) and [gateway notice](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable). The pre-existing [leaked-password protection notice](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) remains; this Google-only hosted login change does not alter password settings.
 
+## Courts and temporary check-ins
+
+Apply `migrations/20261015144341_sideout_courts_presence.sql` after the earlier migrations. It seeds the eight owner-supplied court listings in private `sideout.courts` and adds private `sideout.court_checkins`, keyed by player ID. The authenticated gateways are `sideout_courts(p_court_id text default null)`, `sideout_court_check_in(p_court_id text, p_status text, p_open_play jsonb)`, and `sideout_court_leave(p_court_id text default null)`.
+
+The gateways derive identity from authentication, require a completed avatar for check-in, validate the court and status, and require an actual JSON boolean for open play. They serialize changes on the player's existing lock, store server-owned timestamps and a two-hour expiry, and expose only the existing public player projection. Reads do not renew check-ins. The roster is capped at 100, with the caller first; directory counts cover all unexpired entries. The private tables retain RLS with no client policies or grants; the narrow authenticated gateways intentionally use the existing guarded `SECURITY DEFINER` architecture.
+
+`tests/courts.sql` passed on the configured project as a complete transaction ending in `ROLLBACK`; fixture users and presence were confirmed absent afterward. It checks authentication, unfinished avatars, strict inputs, two-player counts and privacy, same-court updates, atomic moves, expiry, self-only leave, grants, foreign keys, account deletion, and unchanged ratings. JavaScript tests cover local API behavior, the fixed Supabase transport, and browser polling/expiry/error behavior. Court locations and availability are self-reported, not GPS or reservations. No Maps API or paid integration is configured.
+
 ## Existing local data
 
 The optional Node/SQLite backend remains available for local development. Its `.data/sideout.sqlite` is excluded from source and static hosting. This release does not transfer local accounts, password hashes, avatars, or ratings into Supabase. Players from the local prototype create new cloud accounts; retain the local database if its data is needed later.

@@ -22,6 +22,11 @@ function endpoint(path,options){
   if(path==='/api/profile'&&method==='PUT')return{rpc:'sideout_save_profile',args:{p_profile:body},save:true};
   if(path==='/api/play'&&method==='GET')return{rpc:'sideout_play',args:{}};
   if(path==='/api/leaderboard'&&method==='GET')return{rpc:'sideout_leaderboard',args:{}};
+  if(path==='/api/courts'&&method==='GET')return{rpc:'sideout_courts',args:{p_court_id:null}};
+  if(path==='/api/courts/check-in'&&method==='POST')return{rpc:'sideout_court_check_in',args:{p_court_id:body.courtId,p_status:body.status,p_open_play:body.openPlay}};
+  if(path==='/api/courts/leave'&&method==='POST')return{rpc:'sideout_court_leave',args:{p_court_id:body.courtId??null}};
+  const court=path.match(/^\/api\/courts\/([a-z0-9]+(?:-[a-z0-9]+)*)$/);
+  if(court&&court[1].length<=80&&!['check-in','leave'].includes(court[1])&&method==='GET')return{rpc:'sideout_courts',args:{p_court_id:court[1]}};
   const player=path.match(/^\/api\/players\/(SO-[A-F0-9]{12})$/);
   if(player&&method==='GET')return{rpc:'sideout_player',args:{p_code:player[1]}};
   if(path==='/api/duos'&&method==='POST')return{rpc:'sideout_duo_invite',args:{p_code:body.playerCode}};

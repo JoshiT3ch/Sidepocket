@@ -95,6 +95,14 @@ Equal ratings share a competition rank (for example, 1, 1, 3). Wins, then fewer 
 
 The board is available to signed-in players. It shares the existing game display name and avatar, never email addresses or account credentials. It uses genuine rated results; profile demo statistics cannot affect placement.
 
+## Courts and open play
+
+Open **Courts** to choose one of the eight community-maintained Valencia listings and see its active player check-ins, pixel avatars, MMR, and open-play availability. The directory includes Paddle Grove, Jerpits Pickleball Hub, Hive Pickleball Court, ACP Pickleball, Pickle Point Arena Bukidnon, Spinners Pickle Yard, VALENCIA GOODWILL GIANTS SPORTS TOWN, and The Bodega. Names and addresses were supplied by the Sideout owner; directions are Google Maps search links and require no Maps API.
+
+Signed-in players with completed avatars can tap **I'm here**, choose **Playing**, **Idle**, or **Practicing**, and optionally select **Available for open play**. This voluntarily shares the selected court and status with signed-in players. Each account has one check-in; choosing another court moves it atomically. **Leave court** removes only the caller's presence. This is a self-reported check-in, not GPS tracking or a court reservation.
+
+Check-ins expire two hours after the last explicit check-in or status update. Reading or polling never renews them. The page refreshes every 10 seconds while visible, and removes known expired entries locally if the network fails. Rosters show up to 100 active players, with the caller first; directory counts include all active check-ins. Errors preserve the saved check-in and show a retry action. The data uses the same Supabase project across devices, and court actions cannot edit ratings.
+
 ## Validation
 
 Run the JavaScript tests with:

@@ -32,6 +32,21 @@ let playController=null;
 let playStarting=false;
 let leaderboardController=null;
 let leaderboardStarting=null;
+let courtsController=null;
+let courtsStarting=null;
+async function startCourts(){
+  if(!state.avatarCreated)return;
+  if(courtsController)return courtsController.handleNavigation('courts');
+  if(courtsStarting)return courtsStarting;
+  courtsStarting=(async()=>{
+    try{const {initCourts}=await import('./courts.js');courtsController=initCourts({onNavigate:navigate});await courtsController.handleNavigation(document.querySelector('.page.active')?.id||'profile');}
+    catch(error){toast(error.message||'Could not open courts. Please try again.');}
+    finally{courtsStarting=null;}
+  })();
+  return courtsStarting;
+}
+window.addEventListener('pagehide',()=>{courtsController?.destroy();courtsController=null;});
+window.addEventListener('pageshow',event=>{if(event.persisted&&document.querySelector('.page.active')?.id==='courts')startCourts();});
 async function startLeaderboard(){
   if(!state.avatarCreated)return;
   if(leaderboardController)return leaderboardController.refresh();
@@ -82,7 +97,7 @@ function renderHistory(){
   }
 }
 function render(){document.querySelectorAll('.player-name').forEach(e=>e.textContent=state.name.trim()||defaults.name);document.querySelectorAll('[data-rating]').forEach(e=>e.textContent=matchStats?.rating??'—');document.querySelectorAll('[data-rank]').forEach(e=>e.textContent=rank());document.querySelectorAll('[data-games]').forEach(e=>e.textContent=matchStats?.games??0);document.querySelectorAll('[data-wins]').forEach(e=>e.textContent=matchStats?.wins??0);document.querySelectorAll('[data-winrate]').forEach(e=>e.textContent=matchStats?.games??0?Math.round(matchStats.wins/matchStats.games*100)+'%':'—');document.querySelector('.rating-track span').style.width=Math.min((matchStats?.games??0)/5*100,100)+'%';drawScene(document.getElementById('hero-avatar'));drawScene(document.getElementById('locker-avatar'));drawScene(document.getElementById('setup-avatar'));renderOptions();renderHistory();syncAvatarControls();renderWardrobe();if(document.getElementById('story-dialog').open){renderStoryChoices();story();}}
-function navigate(page){if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();}
+function navigate(page){if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard','courts'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();if(courtsController)Promise.resolve(courtsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='courts')startCourts();}
 let storyTemplate=STORY_TEMPLATES[0].id;
 function story(){const canvas=drawStoryCard(document.getElementById('story-canvas'),{profile:state,stats:matchStats,template:storyTemplate});const choice=STORY_TEMPLATES.find(item=>item.id===storyTemplate);canvas.setAttribute('aria-label',`${choice.name} story card for ${state.name.trim()||defaults.name}, with your pixel character and current doubles rating`);storyShare.prepare(canvas,storyFilename(storyTemplate));return canvas;}
 let chosenBody=state.avatarCreated?state.bodyType:null;
