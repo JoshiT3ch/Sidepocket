@@ -7,7 +7,7 @@ const average=players=>Math.round(players.reduce((sum,player)=>sum+Number(player
 const sideName=players=>players.map(player=>player.name).join(' & ');
 const shortDate=value=>{const date=new Date(value);return Number.isFinite(date.getTime())?date.toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';};
 
-export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreated=()=>true,onDuoFormed=()=>{}}={}){
+export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreated=()=>true,onDuoFormed=()=>{},onOpponentFound=()=>{}}={}){
  const root=document.getElementById('play');
  if(!root)return{refresh:async()=>{},handleNavigation:async()=>{},closeScanner:()=>{}};
  const byId=id=>document.getElementById(id);
@@ -20,6 +20,9 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
  const error=message=>{byId('play-error').textContent=message||'';byId('play-error').hidden=!message;};
  const scanError=message=>{byId('scan-error').textContent=message||'';byId('scan-error').hidden=!message;};
  const isMine=player=>Boolean(data&&player&&(player.id===data.player.id||player.code===data.player.code));
+ const samePlayer=(first,second)=>Boolean(first&&second&&(first.id&&first.id===second.id||first.code&&first.code===second.code));
+ const fullDuo=duo=>Boolean(duo?.id&&Array.isArray(duo.players)&&duo.players.length===2&&duo.players.every(player=>player&&(player.id||player.code))&&!samePlayer(...duo.players));
+ const opposingDuoFound=()=>Boolean(fullDuo(data?.duo)&&fullDuo(connected?.duo)&&data.duo.id!==connected.duo.id&&data.duo.players.some(isMine)&&connected.duo.players.some(player=>samePlayer(player,connected.player))&&!data.duo.players.some(player=>connected.duo.players.some(opponent=>samePlayer(player,opponent))));
  const includesMe=players=>players.some(isMine);
  const ownedSide=match=>includesMe(match.teams.a)?'a':'b';
  const mutableButton=(label,callback,className='play-small-button')=>{const button=el('button',className,label);button.type='button';button.disabled=busy;button.addEventListener('click',callback);return button;};
@@ -178,7 +181,14 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   if(lookingUp||busy)return;
   const code=parsePlayerCode(input);if(!code){error('Use a player code or a Sideout player QR link.');return;}
   error('');status('Finding your player…');lookingUp=true;byId('find-player').disabled=true;
-  try{if(!data)await refresh();if(!data)throw new Error('Your player could not load. Refresh your connections and try again.');connected=await api(`/api/players/${encodeURIComponent(code)}`);renderConnected();status(isMine(connected.player)?'That QR belongs to you.':`${connected.player.name} found. Choose teammate or opponent.`);}
+  try{
+   if(!data)await refresh();if(!data)throw new Error('Your player could not load. Refresh your connections and try again.');
+   connected=await api(`/api/players/${encodeURIComponent(code)}`);renderConnected();status(isMine(connected.player)?'That QR belongs to you.':`${connected.player.name} found. Choose teammate or opponent.`);
+   if(opposingDuoFound()){
+    // Only an explicit lookup shows the matchup; refreshes keep the normal challenge flow.
+    try{Promise.resolve(onOpponentFound(data.player,data.duo,connected.duo)).catch(()=>{});}catch{}
+   }
+  }
   catch(problem){connected=null;renderConnected();error(problem.message);status('');}
   finally{lookingUp=false;byId('find-player').disabled=busy;}
  }

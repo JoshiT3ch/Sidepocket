@@ -27,23 +27,26 @@ const token='a2790e87-4509-4625-9dad-c3acc267c2f7';
 const player=(id,name,code)=>({id,name,code,rating:1200,games:0,wins:0,avatar:{}});
 const mine=player('me','My Player','SO-012345ABCDEF');
 const partner=player('partner','Court Friend','SO-111111111111');
+const opponent={...player('opponent','Other Captain','SO-222222222222'),rating:1480,avatar:{hair:'short',shirt:'sky'}};
+const opponentPartner={...player('opponent-partner','Other Teammate','SO-333333333333'),rating:1320,avatar:{hair:'long-waves',shirt:'coral'}};
+const opposingDuo={id:'duo-opponents',players:[opponent,opponentPartner]};
 const snapshot=(duo=null)=>({player:mine,duo,invitations:[],matches:[],history:[]});
 const paired=()=>snapshot({id:'duo-1',players:[mine,partner]});
 function deferred(){let resolve;const promise=new Promise(done=>{resolve=done;});return{promise,resolve};}
 
-async function withPlay({href=origin+'/#play',ready=true,request,onDuoFormed}={},run){
+async function withPlay({href=origin+'/#play',ready=true,request,onDuoFormed,onOpponentFound}={},run){
  const globals=['document','window','location','navigator','setInterval','clearInterval'];
  const previous=new Map(globals.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
  const nodes=Object.fromEntries(ids.map(id=>{const node=new Element(buttonIds.has(id)?'button':id==='player-qr'?'canvas':'div');node.id=id;return[id,node];}));
  nodes.play.children.push(...Object.values(nodes).filter(node=>node!==nodes.play));
- const calls=[],routes=[],copies=[],formations=[],polls=[],page={id:'play'};let current=new URL(href),avatarReady=ready;
+ const calls=[],routes=[],copies=[],formations=[],opponents=[],polls=[],page={id:'play'};let current=new URL(href),avatarReady=ready;
  const location={get href(){return current.href;},get origin(){return current.origin;}};
  const document={hidden:false,getElementById:id=>nodes[id],createElement:tag=>new Element(tag),createTextNode:text=>({textContent:String(text)}),querySelector:selector=>selector==='.page.active'?page:null};
  const service={async request(path,options={}){const body=options.body===undefined?undefined:JSON.parse(options.body);calls.push({path,body,method:options.method||'GET'});return request?request(path,body,calls):snapshot();}};
  const window={location,history:{replaceState(_state,_title,url){current=new URL(url,current);}},sideoutService:service,addEventListener(){}};
  for(const [key,value]of Object.entries({document,window,location,navigator:{clipboard:{async writeText(value){copies.push(value);}}},setInterval:(callback,delay)=>{polls.push({callback,delay});return polls.length;},clearInterval:()=>{}}))Object.defineProperty(globalThis,key,{value,configurable:true,writable:true});
- const context={nodes,calls,routes,copies,formations,polls,location,setReady(value){avatarReady=value;},setUrl(value){current=new URL(value,current);},async poll(){for(const {callback}of polls)callback();await new Promise(resolve=>setImmediate(resolve));}};
- try{context.controller=await initPlay({getAvatarCreated:()=>avatarReady,onNavigate:route=>{routes.push(route);page.id=route;},onDuoFormed:(player,duo)=>{formations.push({player,duo});onDuoFormed?.(player,duo);}});await run(context);}
+ const context={nodes,calls,routes,copies,formations,opponents,polls,location,setReady(value){avatarReady=value;},setUrl(value){current=new URL(value,current);},async poll(){for(const {callback}of polls)callback();await new Promise(resolve=>setImmediate(resolve));},async lookup(input){nodes['connect-player-code'].value=input;nodes['connect-player-form'].emit('submit',{preventDefault(){}});await new Promise(resolve=>setImmediate(resolve));}};
+ try{context.controller=await initPlay({getAvatarCreated:()=>avatarReady,onNavigate:route=>{routes.push(route);page.id=route;},onDuoFormed:(player,duo)=>{formations.push({player,duo});onDuoFormed?.(player,duo);},onOpponentFound:(player,duo,otherDuo)=>{opponents.push({player,duo,otherDuo});return onOpponentFound?.(player,duo,otherDuo);}});await run(context);}
  finally{for(const [key,descriptor]of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}}
 }
 
@@ -147,3 +150,68 @@ test('a failed visual effect cannot undo a successful QR claim or keep its consu
  assert.match(nodes['play-status'].textContent,/You’re a duo/);
  assert.equal(calls.filter(call=>call.path==='/api/duos/join').length,1);
 }));
+
+test('an opponent player QR link previews all four players once while challenge consent stays explicit',()=>withPlay({href:`${origin}/?player=${opponent.code}#play`,request:path=>path.startsWith('/api/players/')?{player:opponent,duo:opposingDuo}:paired()},async({controller,nodes,opponents,poll,calls})=>{
+ assert.deepEqual(opponents,[{player:mine,duo:paired().duo,otherDuo:opposingDuo}]);
+ assert.equal(opponents[0].otherDuo.players[0].rating,1480);
+ assert.equal(opponents[0].otherDuo.players[1].rating,1320);
+ assert.match(nodes['connected-player'].textContent,/Your duo: 1200 MMR · Their duo: 1400 MMR/);
+ const challenge=nodes['connected-player'].querySelectorAll('button').find(button=>button.textContent==='Challenge their duo ↗');
+ assert.ok(challenge);assert.equal(challenge.disabled,false);
+ assert.equal(calls.some(call=>call.method==='POST'),false,'finding opponents cannot send or accept a match');
+ await controller.refresh();await controller.handleNavigation('play');await poll();await poll();
+ assert.equal(opponents.length,1,'refreshing a connected opponent must not replay the preview');
+ assert.equal(calls.some(call=>call.method==='POST'),false);
+}));
+
+test('explicitly rescanning the same opposing duo replays the preview for a code or pasted website link',()=>withPlay({request:path=>path.startsWith('/api/players/')?{player:opponent,duo:opposingDuo}:paired()},async({lookup,opponents,calls})=>{
+ assert.deepEqual(opponents,[],'loading an existing own duo is not an opponent lookup');
+ await lookup(`SIDEOUT:${opponent.code}`);
+ await lookup(`${origin}/?player=${opponent.code}#play`);
+ assert.equal(opponents.length,2);
+ assert.deepEqual(opponents[0],opponents[1]);
+ assert.equal(calls.filter(call=>call.path===`/api/players/${opponent.code}`).length,2);
+ assert.equal(calls.some(call=>call.method==='POST'),false);
+}));
+
+test('self, teammate, incomplete or overlapping teams and failed lookups cannot show an opponent preview',async()=>{
+ const scenarios=[
+  {label:'own QR',own:paired(),found:{player:mine,duo:paired().duo}},
+  {label:'teammate QR',own:paired(),found:{player:partner,duo:paired().duo}},
+  {label:'unpaired current player',own:snapshot(),found:{player:opponent,duo:opposingDuo}},
+  {label:'unpaired opponent',own:paired(),found:{player:opponent,duo:null}},
+  {label:'only one opponent',own:paired(),found:{player:opponent,duo:{...opposingDuo,players:[opponent]}}},
+  {label:'three opponents',own:paired(),found:{player:opponent,duo:{...opposingDuo,players:[opponent,opponentPartner,partner]}}},
+  {label:'duplicate opponent',own:paired(),found:{player:opponent,duo:{...opposingDuo,players:[opponent,{...opponent}]}}},
+  {label:'duplicate opponent code',own:paired(),found:{player:opponent,duo:{...opposingDuo,players:[opponent,{...opponentPartner,code:opponent.code}]}}},
+  {label:'current player on opponent team',own:paired(),found:{player:opponent,duo:{...opposingDuo,players:[opponent,mine]}}},
+  {label:'shared teammate',own:paired(),found:{player:opponent,duo:{...opposingDuo,players:[opponent,partner]}}},
+  {label:'same duo identifier',own:paired(),found:{player:opponent,duo:{...opposingDuo,id:paired().duo.id}}},
+  {label:'scanned player missing from their team',own:paired(),found:{player:opponent,duo:{...opposingDuo,players:[opponentPartner,player('outsider','Other','SO-444444444444')]}}},
+  {label:'own player missing from current duo',own:snapshot({id:'duo-1',players:[partner,player('outsider','Other','SO-444444444444')]}),found:{player:opponent,duo:opposingDuo}},
+  {label:'duplicate own player',own:snapshot({id:'duo-1',players:[mine,{...mine}]}),found:{player:opponent,duo:opposingDuo}},
+  {label:'failed lookup',own:paired(),error:true},
+ ];
+ for(const scenario of scenarios)await withPlay({request:path=>{if(path.startsWith('/api/players/')){if(scenario.error)throw new Error('Player unavailable.');return scenario.found;}return scenario.own;}},async({lookup,opponents,calls,nodes})=>{
+  await lookup(scenario.found?.player.code||opponent.code);
+  assert.equal(opponents.length,0,scenario.label);
+  assert.equal(calls.some(call=>call.method==='POST'),false,scenario.label);
+  if(scenario.error)assert.match(nodes['play-error'].textContent,/Player unavailable/);
+ });
+});
+
+test('joining a duo QR never treats the new teammate as an opponent',()=>withPlay({href:`${origin}/?duo=${token}#play`,request:path=>path==='/api/duos/join'?paired():snapshot()},async({opponents,formations,calls})=>{
+ assert.equal(formations.length,1);assert.deepEqual(opponents,[]);
+ assert.equal(calls.some(call=>call.path.startsWith('/api/players/')),false);
+}));
+
+test('a failing opponent visual leaves the found team and normal challenge action available',async()=>{
+ for(const callback of [()=>{throw new Error('Canvas unavailable.');},async()=>{throw new Error('Animation unavailable.');}])await withPlay({request:path=>path.startsWith('/api/players/')?{player:opponent,duo:opposingDuo}:paired(),onOpponentFound:callback},async({lookup,opponents,nodes,calls})=>{
+  await lookup(opponent.code);
+  assert.equal(opponents.length,1);assert.equal(nodes['play-error'].hidden,true);
+  assert.match(nodes['play-status'].textContent,/Other Captain found/);assert.equal(nodes['connected-player'].hidden,false);
+  const challenge=nodes['connected-player'].querySelectorAll('button').find(button=>button.textContent==='Challenge their duo ↗');
+  assert.ok(challenge);assert.equal(challenge.disabled,false);
+  assert.equal(calls.some(call=>call.method==='POST'),false);
+ });
+});
