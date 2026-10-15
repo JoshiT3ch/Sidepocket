@@ -1,7 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,rm,readFile} from 'node:fs/promises';
+import vm from 'node:vm';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -9,6 +10,79 @@ import net from 'node:net';
 import {DatabaseSync} from 'node:sqlite';
 import {WARDROBE,DEFAULT_EQUIPMENT} from '../dist/wardrobe.js';
 import {HAIRSTYLES,HAIR_COLORS} from '../dist/hairstyles.js';
+
+// Execute the real auth controller with a DOM/transport double; only dynamic module loading is replaced.
+async function authPage({href,provider='local',signedIn=false,avatarCreated=false}={}){
+ const source=(await readFile(new URL('../dist/auth.js',import.meta.url),'utf8'))
+  .replace("import('./service.js')","Promise.resolve({getService:()=>window.testService})")
+  .replace("import('./pixel-player.js')","Promise.reject(new Error('Sprite rendering is checked separately.'))");
+ class Element{
+  constructor(){this.hidden=false;this.disabled=false;this.value='';this.dataset={};this.listeners={};this.children=[];this.attributes={};this.classList={remove(){},add(){}};}
+  setAttribute(name,value){this.attributes[name]=String(value);}
+  addEventListener(name,handler){this.listeners[name]=handler;}
+  querySelectorAll(){return [];}
+  replaceChildren(...children){this.children=children;}
+  append(...children){this.children.push(...children);}
+  reportValidity(){return true;}
+  focus(){}
+  async emit(name,event={}){await this.listeners[name]?.(event);}
+ }
+ const nodes=new Map(),node=id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id);};
+ const tabs=['login','signup'].map(mode=>{const item=new Element();item.dataset.authMode=mode;return item;});
+ const calls=[],destinations=[];let current=new URL(href),reloads=0;
+ const location={get href(){return current.href;},get search(){return current.search;},get hash(){return current.hash;},get protocol(){return current.protocol;},replace(value){destinations.push(value);current=new URL(value,current);},reload(){reloads++;}};
+ const profile={name:'New Player',avatarCreated};const user={id:'fixture-player',name:'New Player'};
+ const service={provider,onAuthStateChange(){return{unsubscribe(){}};},async request(path,options={}){calls.push([path,options]);if(path==='/api/auth/session')return{user:signedIn?user:null};if(path==='/api/profile')return{profile};if(path==='/api/auth/google')return{redirecting:true};return{user};}};
+ const window={testService:service,addEventListener(){}};
+ const document={getElementById:node,querySelector:selector=>node(selector),querySelectorAll:selector=>selector==='[data-auth-mode]'||selector==='.auth-tabs button'?tabs:[],createElement:()=>new Element(),createTextNode:text=>({textContent:text}),body:{classList:{remove(){}}}};
+ vm.runInNewContext(source,{window,document,location,history:{replaceState(_state,_title,value){current=new URL(value,current);}},URL,URLSearchParams,setTimeout});
+ const account=await window.sideoutAuth.ready;
+ return{nodes,node,tabs,calls,destinations,account,location,get reloads(){return reloads;}};
+}
+
+const duoToken='a2790e87-4509-4625-9dad-c3acc267c2f7';
+test('local login and signup retain only the current valid duo intent through auth mode switches',async()=>{
+ for(const mode of ['login','signup']){
+  const page=await authPage({href:`https://sideout.example/?duo=${duoToken.toUpperCase()}&redirectTo=https%3A%2F%2Fevil.example#${mode}`});
+  await page.tabs.find(tab=>tab.dataset.authMode!==mode).emit('click');
+  await page.tabs.find(tab=>tab.dataset.authMode===mode).emit('click');
+  assert.equal(new URL(page.location.href).searchParams.get('duo'),duoToken.toUpperCase());
+  assert.match(page.node('auth-subtitle').textContent,/join this duo/);
+  page.node('auth-email').value='new@example.invalid';page.node('auth-name').value='New Player';page.node('auth-password').value='Example-password';page.node('auth-confirm').value='Example-password';
+  await page.node('auth-form').emit('submit',{preventDefault(){}});
+  assert.equal(page.calls.at(-1)[0],'/api/auth/'+mode);
+  assert.equal(page.destinations.at(-1),`/?duo=${duoToken}#play`);assert.equal(page.reloads,1);
+ }
+});
+
+test('new Google accounts keep their duo link after the verified session while still needing avatar setup',async()=>{
+ const page=await authPage({href:`https://sideout.example/?player=SO-012345ABCDEF&duo=${duoToken}#login`,provider:'supabase',signedIn:true});
+ assert.equal(page.account.profile.avatarCreated,false);
+ assert.equal(page.location.href,`https://sideout.example/?player=SO-012345ABCDEF&duo=${duoToken}#play`);
+ assert.equal(page.node('auth-view').hidden,true);assert.equal(page.node('player-app').hidden,false);
+ assert.deepEqual(page.calls.map(call=>call[0]),['/api/auth/session','/api/profile']);
+});
+
+test('invalid or duplicated duo query values do not create a post-login join intent',async()=>{
+ for(const query of [`duo=${duoToken}&duo=${duoToken}`,`duo=${duoToken}%2F..`,'duo=https%3A%2F%2Fevil.example','duo=']){
+  const page=await authPage({href:`https://sideout.example/?${query}#login`,signedIn:true});
+  assert.equal(page.location.href,'https://sideout.example/#profile');
+ }
+ const player=await authPage({href:`https://sideout.example/?player=SO-012345ABCDEF&duo=invalid#signup`,signedIn:true});
+ assert.equal(player.location.href,'https://sideout.example/?player=SO-012345ABCDEF#play');
+ const fresh=await authPage({href:'https://sideout.example/#login',signedIn:true});
+ assert.equal(fresh.location.href,'https://sideout.example/#profile');
+});
+
+test('cancelled Google sign-in preserves the current duo URL for a retry without retaining OAuth errors',async()=>{
+ const page=await authPage({href:`https://sideout.example/?duo=${duoToken}&error=access_denied#error_description=Cancelled`,provider:'supabase'});
+ assert.equal(new URL(page.location.href).searchParams.get('duo'),duoToken);
+ assert.equal(new URL(page.location.href).searchParams.has('error'),false);
+ assert.equal(new URL(page.location.href).hash,'#login');assert.match(page.node('auth-error').textContent,/canceled/);
+ assert.match(page.node('auth-subtitle').textContent,/join this duo/);
+ await page.node('auth-google').emit('click');assert.equal(page.calls.at(-1)[0],'/api/auth/google');
+ assert.equal(new URL(page.location.href).searchParams.get('duo'),duoToken);
+});
 
 test('accounts, authenticated profiles, and session protections',{timeout:30000},async t=>{
  const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');

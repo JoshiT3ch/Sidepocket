@@ -38,9 +38,13 @@ Male and female hairstyles have separate choices; both support six hair colors. 
 
 ## QR codes and doubles
 
-Open **Play & QR** to show your stable player QR and code. Scan another player's QR with the camera, choose a QR photo, or paste a player code or link. Images are decoded locally in the browser.
+Open **Play & QR** to show your stable player code and a QR that contains a full Sideout website URL. A normal phone camera can open it directly. Older saved QR images encoded custom player text; reopen the updated website and use its new QR. In Sideout, you can scan with the camera, choose a QR photo, or paste a player code or link. Images are decoded locally in the browser.
 
-Choose **Invite as my duo** to send a teammate invitation. Once they accept, both players form a duo. Each player can belong to one active duo.
+For automatic pairing, tap **Create duo invite QR** while you are free to form a duo. Share that QR or use **Copy QR link**. Your teammate opens the link, signs in (or creates an account with Google), finishes avatar setup if needed, and joins your duo automatically. This invite is a one-use, unpredictable link valid for 24 hours. Creating a new invite replaces the previous one. Keep it for your intended teammate. Self-joins, expired links, and players already in a different duo or unfinished match are rejected. Retrying the same successful claim is safe while that same duo is still active.
+
+The invite stays in the current URL through login and Google OAuth; it is removed after a successful join. It is not stored across unrelated accounts. If joining fails, the link stays available for an explicit retry with **Refresh**. **Show player QR** returns to the normal profile lookup QR for opponents.
+
+The normal player QR lets people find your profile without pairing automatically. Choose **Invite as my duo** to send a traditional teammate invitation; the other player accepts it in Sideout. Each player can belong to one active duo. Duo invite QRs are the separate path that already has the creator's consent to pair.
 
 Scan a player from another duo and choose **Challenge their duo**. A player on that duo accepts the challenge. Any of the four participants can then select the winning duo and record the result. One submission updates all four ratings immediately; there is no additional result confirmation. The match records who submitted it, the winner, and each player's before/after rating. Completed results cannot be submitted again. Unplayed games can be cancelled without changing ratings.
 

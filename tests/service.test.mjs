@@ -67,6 +67,31 @@ test('Google sign-in uses only the configured provider and a same-origin player 
   ]);
 });
 
+test('Google sign-in keeps a canonical duo invite alongside a player lookup and strips all other input',async()=>{
+  const {service,calls}=fixture({href:`https://sideout.example/?duo=${id.toUpperCase()}&player=${playerCode}&redirectTo=https%3A%2F%2Fevil.example&token=private#signup`});
+  await service.request('/api/auth/google',post({redirectTo:'https://evil.example',duo:'ignored'}));
+  assert.deepEqual(calls.at(-1),['signInWithOAuth',{provider:'google',options:{redirectTo:`https://sideout.example/?player=${playerCode}&duo=${id}`}}]);
+  const onlyDuo=fixture({href:`https://sideout.example/?duo=${id}#login`});
+  await onlyDuo.service.request('/api/auth/google',post({}));
+  assert.equal(onlyDuo.calls.at(-1)[1].options.redirectTo,`https://sideout.example/?duo=${id}`);
+});
+
+test('malformed and ambiguous duo intents cannot survive OAuth or replace a valid player lookup',async()=>{
+  for(const query of [
+    'duo=https%3A%2F%2Fevil.example',
+    `duo=${id}%2F..`,
+    `duo=%20${id}`,
+    `duo=${id}&duo=${id}`,
+    `duo=${id}&duo=invalid`,
+    'duo=',
+    `duo=${id.replaceAll('-','')}`
+  ]){
+    const {service,calls}=fixture({href:`https://sideout.example/?${query}&player=${playerCode}#signup`});
+    await service.request('/api/auth/google',post({}));
+    assert.equal(calls.at(-1)[1].options.redirectTo,`https://sideout.example/?player=${playerCode}`);
+  }
+});
+
 test('an unfinished Google provider stays on Sideout without opening an OAuth error page',async()=>{
   const {service,calls}=fixture({settings:{external:{google:false}}});
   await assert.rejects(service.request('/api/auth/google',post({})),{status:503,message:'Google sign-in is still being set up. Please try again later.'});
@@ -106,7 +131,7 @@ test('invalid player links and injected destinations are removed before Google s
 test('Supabase implicit callback remains recognizable to the bundled SDK after its token fragment is appended',async()=>{
   const source=await readFile(new URL('../dist/vendor/supabase-2.117.3.js',import.meta.url),'utf8');
   const sdk=vm.runInNewContext(source.replace(/export const createClient = supabase\.createClient;/,'')+';supabase;');
-  for(const href of ['https://sideout.example/#login',`https://sideout.example/?player=${playerCode}#signup`]){
+  for(const href of ['https://sideout.example/#login',`https://sideout.example/?player=${playerCode}#signup`,`https://sideout.example/?duo=${id}#login`,`https://sideout.example/?player=${playerCode}&duo=${id}#signup`]){
     const {service,calls}=fixture({href});
     await service.request('/api/auth/google',post({}));
     const redirect=calls.at(-1)[1].options.redirectTo;
@@ -116,6 +141,7 @@ test('Supabase implicit callback remains recognizable to the bundled SDK after i
     assert.equal(sdk.AuthClient.prototype._isImplicitGrantCallback.call({detectSessionInUrl:true},params),true);
     assert.equal(params.access_token,'synthetic-access');
     assert.equal(callback.searchParams.get('player'),href.includes('?player=')?playerCode:null);
+    assert.equal(callback.searchParams.get('duo'),href.includes('duo=')?id:null);
   }
 });
 
@@ -180,6 +206,8 @@ test('duo and match actions preserve server-authoritative rating and ownership c
     ['/api/play',{},'sideout_play',{}],
     [`/api/players/${playerCode}`,{},'sideout_player',{p_code:playerCode}],
     ['/api/duos',post({playerCode,rating:9999}),'sideout_duo_invite',{p_code:playerCode}],
+    ['/api/duos/link',post({ownerId:'ignored',playerCode}),'sideout_duo_link_create',{}],
+    ['/api/duos/join',post({token:id,ownerId:'ignored',rating:9999}),'sideout_duo_link_join',{p_token:id}],
     [`/api/duos/${id}/respond`,post({accept:true,userId:'ignored'}),'sideout_duo_respond',{p_id:id,p_accept:true}],
     ['/api/duos/leave',post({}),'sideout_duo_leave',{}],
     ['/api/matches',post({playerCode}),'sideout_match_create',{p_code:playerCode}],

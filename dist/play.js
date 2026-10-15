@@ -1,5 +1,5 @@
 import {drawAvatar} from './pixel-player.js';
-import {renderPlayerQr,decodePlayerQr,parsePlayerCode} from './qr.js';
+import {renderPlayerQr,renderDuoQr,decodePlayerQr,parsePlayerCode,playerLink,duoLink,parseDuoInvite} from './qr.js';
 
 const el=(tag,className='',content='')=>{const node=document.createElement(tag);if(className)node.className=className;if(content!==''&&content!=null)node.textContent=String(content);return node;};
 const signed=value=>`${Number(value)>=0?'+':''}${value}`;
@@ -13,6 +13,7 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
  const byId=id=>document.getElementById(id);
  const dialog=byId('player-scan-dialog'),video=byId('player-scan-video'),scanMessage=byId('scanner-message');
  let data=null,connected=null,busy=false,refreshing=null,stream=null,scanTimer=null,scanGeneration=0,lookingUp=false,deepLinkHandled=false;
+ let duoInvite=null,showDuoQr=false,qrLink='',joining=false;
  const winnerChoices=new Map();
  const scannerCanvas=document.createElement('canvas');
  const status=message=>{byId('play-status').textContent=message||'';};
@@ -47,7 +48,41 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
  function renderIdentity(){
   byId('play-identity-player').replaceChildren(person(data.player));
   byId('player-code').textContent=data.player.code;
-  renderPlayerQr(byId('player-qr'),data.player.code);
+  if(data.duo){duoInvite=null;showDuoQr=false;}
+  const invite=showDuoQr&&duoInvite&&new Date(duoInvite.expiresAt).getTime()>Date.now();
+  qrLink=invite?duoLink(duoInvite.token):playerLink(data.player.code);
+  if(invite)renderDuoQr(byId('player-qr'),duoInvite.token);else renderPlayerQr(byId('player-qr'),data.player.code);
+  byId('player-qr').setAttribute('aria-label',invite?'Duo invitation QR. Scan to open Sideout and join this player.':'Player QR. Scan to open this player on the Sideout website.');
+  byId('player-qr-label').textContent=invite?'YOUR DUO INVITE QR':'YOUR PLAYER QR';
+  byId('player-qr-badge').textContent=invite?'ONE TEAMMATE':'OPEN SIDEOUT';
+  byId('qr-link-output').value=qrLink;
+  byId('create-duo-qr').disabled=busy||Boolean(data.duo);
+  byId('create-duo-qr').title=data.duo?'Leave your current duo before inviting another teammate.':'';
+  byId('create-duo-qr').textContent=duoInvite?'Create new duo invite QR ↗':'Create duo invite QR ↗';
+  byId('show-player-qr').hidden=!invite;
+  byId('player-qr-help').textContent=invite?`Your teammate scans this, signs in or signs up, and creates an avatar. You’ll become a duo automatically. One use · expires ${new Date(duoInvite.expiresAt).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}. Creating a new invite replaces this one.`:data.duo?'Scan this with a phone camera to open Sideout and find your team.':'Scan this to open Sideout. To pair automatically after signup, create a duo invite QR below.';
+ }
+ async function createDuoQr(){
+  if(busy||!data||data.duo)return;
+  error('');status('Creating your duo invite…');setBusy(true);
+  try{
+   if(refreshing)await refreshing;
+   const link=await api('/api/duos/link',{});
+   duoLink(link.token);if(!Number.isFinite(new Date(link.expiresAt).getTime()))throw new Error('The invite could not be created. Try again.');
+   duoInvite=link;showDuoQr=true;status('Duo invite ready. The first eligible player who scans and signs in will join you.');
+  }catch(problem){error(problem.message);status('');}
+  finally{setBusy(false);render();}
+ }
+ async function joinDuo(token){
+  if(joining||busy||!getAvatarCreated())return;
+  joining=true;error('');status('Joining your teammate…');setBusy(true);
+  try{
+   if(refreshing)await refreshing;
+   const next=await api('/api/duos/join',{token});await applyData(next);
+   const url=new URL(window.location.href);url.searchParams.delete('duo');url.searchParams.delete('player');url.hash='play';window.history.replaceState(null,'',url);
+   deepLinkHandled=true;status('You’re a duo! Your teammate is ready below. Scan another duo to find a game.');
+  }catch(problem){error(problem.message);status('');}
+  finally{joining=false;setBusy(false);render();}
  }
  function renderConnected(){
   const target=byId('connected-player');target.replaceChildren();target.hidden=!connected;
@@ -73,7 +108,7 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
    const roster=el('div','play-duo-roster');data.duo.players.forEach(player=>roster.append(person(player)));target.append(roster);
    const rating=el('div','play-team-average');rating.append(el('span','','TEAM AVERAGE'),el('strong','',`${average(data.duo.players)} MMR`));target.append(rating);
    const actions=el('div','play-actions');actions.append(mutableButton('Leave this duo',()=>runAction('/api/duos/leave',{},'You left the duo. Scan a player to find your next teammate.')));target.append(actions);
-  }else{const empty=el('p','play-empty');empty.append(el('strong','','Two is a team.'),document.createTextNode(' Scan a friend or share your QR to form your duo. Your teammate needs to accept the invite.'));target.append(empty);}
+  }else{const empty=el('p','play-empty');empty.append(el('strong','','Two is a team.'),document.createTextNode(' Create a duo invite QR for a teammate to scan and join automatically. Player-code invitations still need the other player to accept.'));target.append(empty);}
   const invitations=byId('duo-invitations');invitations.replaceChildren();
   for(const invitation of data.invitations||[]){
    const card=el('div','duo-invite');card.append(el('div','eyebrow','DUO INVITATION'),person(invitation.from));
@@ -144,14 +179,20 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
  }
  async function handleDeepLink(){
   if(deepLinkHandled||!getAvatarCreated())return;
-  const url=new URL(window.location.href),hashInput=url.hash.startsWith('#connect/')?url.hash.slice(9):null,input=url.searchParams.get('player')||hashInput;
+  const url=new URL(window.location.href),token=parseDuoInvite(url.href);
+  if(url.searchParams.has('duo')){
+   deepLinkHandled=true;onNavigate('play');
+   if(!token){error('This duo invite link is invalid. Ask your teammate to create a new duo QR.');return;}
+   await joinDuo(token);return;
+  }
+  const hashInput=url.hash.startsWith('#connect/')?url.hash.slice(9):null,input=url.searchParams.get('player')||hashInput;
   if(!input)return;
   deepLinkHandled=true;url.searchParams.delete('player');url.hash='#play';window.history.replaceState(null,'',url);onNavigate('play');
   if(!data)await refresh({quiet:true});await lookup(input);
  }
  function stopCamera(){scanGeneration++;if(scanTimer)clearTimeout(scanTimer);scanTimer=null;if(stream)stream.getTracks().forEach(track=>track.stop());stream=null;video.srcObject=null;}
  function closeScanner(){stopCamera();if(dialog.open)dialog.close();}
- async function foundCode(text){const code=parsePlayerCode(text);if(!code){scanError('This QR is not a Sideout player code. Try their player QR.');return false;}closeScanner();byId('connect-player-code').value=code;onNavigate('play');await lookup(code);return true;}
+ async function foundCode(text){const token=parseDuoInvite(text);if(token){closeScanner();onNavigate('play');await joinDuo(token);return true;}const code=parsePlayerCode(text);if(!code){scanError('This QR is not a Sideout player or duo invite link. Try their Sideout QR.');return false;}closeScanner();byId('connect-player-code').value=code;onNavigate('play');await lookup(code);return true;}
  async function scanFrame(generation){
   if(generation!==scanGeneration||!dialog.open)return;
   try{if(video.readyState>=2&&video.videoWidth){const ratio=Math.min(1,640/video.videoWidth);scannerCanvas.width=Math.round(video.videoWidth*ratio);scannerCanvas.height=Math.round(video.videoHeight*ratio);const ctx=scannerCanvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(video,0,0,scannerCanvas.width,scannerCanvas.height);const result=decodePlayerQr(ctx.getImageData(0,0,scannerCanvas.width,scannerCanvas.height));if(result&&await foundCode(result))return;}}
@@ -173,8 +214,11 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   catch{if(generation!==scanGeneration||!dialog.open)return;scanError('This photo could not be read. Try another image or paste their player code.');scanMessage.textContent='Choose another QR photo, or paste their player code.';}
   finally{image?.close();}
  }
- byId('connect-player-form').addEventListener('submit',event=>{event.preventDefault();lookup(byId('connect-player-code').value);});
- byId('refresh-play').addEventListener('click',()=>refresh());
+ byId('connect-player-form').addEventListener('submit',event=>{event.preventDefault();const input=byId('connect-player-code').value,token=parseDuoInvite(input);if(token)joinDuo(token);else lookup(input);});
+ byId('refresh-play').addEventListener('click',async()=>{await refresh();if(new URL(window.location.href).searchParams.has('duo')){deepLinkHandled=false;await handleDeepLink();}});
+ byId('create-duo-qr').addEventListener('click',createDuoQr);
+ byId('show-player-qr').addEventListener('click',()=>{showDuoQr=false;renderIdentity();});
+ byId('copy-qr-link').addEventListener('click',async()=>{if(!qrLink)return;try{await navigator.clipboard.writeText(qrLink);status(parseDuoInvite(qrLink)?'Duo invite link copied. Send it to your teammate.':'Player link copied. It opens the Sideout website.');}catch{const input=byId('qr-link-output');input.hidden=false;input.focus();input.select();status('Select and copy the website link below your QR.');}});
  byId('copy-player-code').addEventListener('click',async()=>{if(!data)return;try{await navigator.clipboard.writeText(data.player.code);status('Player code copied. Share it with your court crew.');}catch{status(`Your player code is ${data.player.code}. Select and copy it above.`);}});
  byId('scan-player').addEventListener('click',openScanner);byId('use-player-photo').addEventListener('click',openPhoto);byId('scan-close').addEventListener('click',closeScanner);
  dialog.addEventListener('close',stopCamera);dialog.addEventListener('cancel',stopCamera);

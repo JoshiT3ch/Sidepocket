@@ -19,6 +19,11 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
   status TEXT NOT NULL CHECK(status IN ('pending','accepted','declined','expired','cancelled')),
   created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,CHECK(from_id<>to_id));
  CREATE INDEX IF NOT EXISTS play_invitation_target ON play_duo_invitations(to_id,status);
+ CREATE TABLE IF NOT EXISTS play_duo_links(
+  token TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id),created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,
+  revoked_at INTEGER,claimed_by TEXT REFERENCES users(id),duo_id TEXT REFERENCES play_duos(id),
+  CHECK((claimed_by IS NULL)=(duo_id IS NULL)),CHECK(claimed_by IS NULL OR claimed_by<>owner_id));
+ CREATE INDEX IF NOT EXISTS play_duo_links_available ON play_duo_links(owner_id) WHERE claimed_by IS NULL AND revoked_at IS NULL;
  CREATE TABLE IF NOT EXISTS play_matches(
   id TEXT PRIMARY KEY,status TEXT NOT NULL CHECK(status IN ('pending','active','completed','cancelled')),
   duo_a TEXT NOT NULL REFERENCES play_duos(id),duo_b TEXT NOT NULL REFERENCES play_duos(id),
@@ -63,6 +68,7 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
  function participantIds(row){return[row.player_a1,row.player_a2,row.player_b1,row.player_b2];}
  function unfinished(userId){return db.prepare("SELECT id FROM play_matches WHERE status IN ('pending','active') AND (player_a1=? OR player_a2=? OR player_b1=? OR player_b2=?) LIMIT 1").get(userId,userId,userId,userId);}
  function requireFree(ids){if(ids.some(id=>unfinished(id)))fail(409,'One of these players already has an unfinished game. Finish or cancel it first.');}
+ function revokeDuoLinks(ids){for(const id of ids)db.prepare('UPDATE play_duo_links SET revoked_at=? WHERE owner_id=? AND claimed_by IS NULL AND revoked_at IS NULL').run(Date.now(),id);}
  function requireMatch(matchId,userId){const row=db.prepare('SELECT * FROM play_matches WHERE id=?').get(matchId);if(!row)fail(404,'Game not found.');if(!participantIds(row).includes(userId))fail(403,'Only players in this game can change it.');return row;}
  function matchView(row){const teams=JSON.parse(row.teams);return{id:row.id,status:row.status,teams,createdBy:row.created_by,createdAt:row.created_at,reportedBy:row.reported_by||null,completedAt:row.completed_at||null,winnerSide:row.winner_side||null,preview:ratingPreview(teams),deltas:row.deltas?JSON.parse(row.deltas):null};}
  function playView(userId){
@@ -102,6 +108,39 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
    const found=codePlayer(decodeURIComponent(pathname.slice('/api/players/'.length)));
    send(res,200,{player:found,duo:duoView(duoRow(found.id))});return true;
   }
+  if(pathname==='/api/duos/link'&&req.method==='POST'){
+   await body(req);
+   const link=transaction(()=>{
+    expire();requireReady(current.id);
+    if(duoRow(current.id))fail(409,'Leave your current duo before creating a duo link.');
+    requireFree([current.id]);revokeDuoLinks([current.id]);
+    const token=randomUUID(),now=Date.now(),expiresAt=now+INVITATION_LIFETIME;
+    db.prepare('INSERT INTO play_duo_links(token,owner_id,created_at,expires_at) VALUES(?,?,?,?)').run(token,current.id,now,expiresAt);
+    return{token,expiresAt};
+   });send(res,201,link);return true;
+  }
+  if(pathname==='/api/duos/join'&&req.method==='POST'){
+   const data=await body(req);
+   if(typeof data.token!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(data.token))fail(400,'This duo link is invalid. Ask your partner for a new one.');
+   transaction(()=>{
+    expire();const link=db.prepare('SELECT * FROM play_duo_links WHERE token=?').get(data.token.toLowerCase());
+    if(!link)fail(404,'This duo link is invalid. Ask your partner for a new one.');
+    if(link.owner_id===current.id)fail(400,'This is your own duo link. Share it with your partner.');
+    if(link.revoked_at!==null||link.expires_at<=Date.now())fail(409,'This duo link has expired or been replaced. Ask your partner for a new one.');
+    requireReady(current.id);requireReady(link.owner_id);
+    if(link.claimed_by!==null){
+     const own=duoRow(current.id),other=duoRow(link.owner_id);
+     if(link.claimed_by===current.id&&own?.id===link.duo_id&&other?.id===link.duo_id)return;
+     fail(409,'This duo link has already been used. Ask your partner for a new one.');
+    }
+    if(duoRow(current.id)||duoRow(link.owner_id))fail(409,'A player is already in a duo. Leave the current duo before choosing a new partner.');
+    requireFree([current.id,link.owner_id]);
+    const duoId=randomUUID();db.prepare('INSERT INTO play_duos VALUES(?,?,?,?,NULL)').run(duoId,link.owner_id,current.id,Date.now());
+    db.prepare('UPDATE play_duo_links SET claimed_by=?,duo_id=? WHERE token=?').run(current.id,duoId,link.token);
+    revokeDuoLinks([current.id,link.owner_id]);
+    db.prepare("UPDATE play_duo_invitations SET status='cancelled' WHERE status='pending' AND (from_id=? OR from_id=? OR to_id=? OR to_id=?)").run(current.id,link.owner_id,current.id,link.owner_id);
+   });return reply();
+  }
   if(pathname==='/api/duos'&&req.method==='POST'){
    const data=await body(req);const target=codePlayer(data.playerCode);
    if(target.id===current.id)fail(400,'Choose another player for your duo.');
@@ -124,6 +163,7 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
     if(duoRow(invite.from_id)||duoRow(invite.to_id))fail(409,'A player is already in another duo.');
     requireFree([invite.from_id,invite.to_id]);
     db.prepare('INSERT INTO play_duos VALUES(?,?,?,?,NULL)').run(randomUUID(),invite.from_id,invite.to_id,Date.now());
+    revokeDuoLinks([invite.from_id,invite.to_id]);
     db.prepare("UPDATE play_duo_invitations SET status='accepted' WHERE id=?").run(invite.id);
     db.prepare("UPDATE play_duo_invitations SET status='cancelled' WHERE status='pending' AND (from_id=? OR from_id=? OR to_id=? OR to_id=?)").run(invite.from_id,invite.to_id,invite.from_id,invite.to_id);
    });return reply();

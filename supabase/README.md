@@ -70,6 +70,18 @@ Apply `migrations/20261014150708_sideout_leaderboard.sql` after the original Sid
 
 The RPC reuses the existing allowlisted player view and does not grant access to private tables or expose email addresses. `PUBLIC` and `anon` cannot execute it. The separate `tests/leaderboard.sql` fixture verifies eligibility, ties, the top-100 cutoff, the caller's position, and access restrictions inside a transaction that ends with `ROLLBACK`.
 
+## Duo invite QR links
+
+Apply `migrations/20261015045300_sideout_duo_links.sql`, then `migrations/20261015045954_sideout_duo_links_owner_index.sql`. The first adds the private `sideout.duo_links` table and the authenticated `public.sideout_duo_link_create()` and `public.sideout_duo_link_join(p_token text)` gateways. The second indexes the owner foreign key.
+
+The owner explicitly creates a one-use UUID invite valid for 24 hours. Rotation replaces older unused links. Joining requires a completed avatar for both players, no existing duo, and no unfinished match. The transaction locks both players in the existing deterministic order, claims the link, creates membership, and cancels conflicting pending invitations. A retry returns only the same original active duo. A consumed link cannot recreate a dissolved duo, and ordinary duo creation revokes unused owner links.
+
+The browser carries `?duo=UUID` through login, Google OAuth and avatar creation. Supabase must allow the production callback with that query. The project's existing `https://sideout-valencia.dchiligan.chatgpt.site/**` redirect entry was verified and already covers it; no provider or credential change was needed.
+
+`tests/duo-links.sql` was executed successfully against the project as a transaction ending in `ROLLBACK`; its fixture users were confirmed absent afterward. It checks anonymous and identity denial, private-table restrictions, incomplete avatars, self-joins, invalid/expired/replaced links, one-use claims, safe retries, conflicting duos, ordinary-invite invalidation, and transaction rollback. The JavaScript suite separately verifies API behavior, actual QR raster decoding, auth redirects, and automatic joining after avatar completion. A local browser test also completed a fresh signup and avatar from an invite and showed both players in the resulting duo.
+
+Advisor review retains the existing RPC architecture: private tables intentionally have no client RLS policies or direct grants, and authenticated callers intentionally execute narrow `SECURITY DEFINER` gateways whose helpers check identity and ownership. See the [RLS notice](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy) and [gateway notice](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable). The pre-existing [leaked-password protection notice](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) remains; this Google-only hosted login change does not alter password settings.
+
 ## Existing local data
 
 The optional Node/SQLite backend remains available for local development. Its `.data/sideout.sqlite` is excluded from source and static hosting. This release does not transfer local accounts, password hashes, avatars, or ratings into Supabase. Players from the local prototype create new cloud accounts; retain the local database if its data is needed later.

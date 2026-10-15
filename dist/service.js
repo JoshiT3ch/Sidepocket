@@ -25,6 +25,8 @@ function endpoint(path,options){
   const player=path.match(/^\/api\/players\/(SO-[A-F0-9]{12})$/);
   if(player&&method==='GET')return{rpc:'sideout_player',args:{p_code:player[1]}};
   if(path==='/api/duos'&&method==='POST')return{rpc:'sideout_duo_invite',args:{p_code:body.playerCode}};
+  if(path==='/api/duos/link'&&method==='POST')return{rpc:'sideout_duo_link_create',args:{}};
+  if(path==='/api/duos/join'&&method==='POST')return{rpc:'sideout_duo_link_join',args:{p_token:body.token}};
   if(path==='/api/duos/leave'&&method==='POST')return{rpc:'sideout_duo_leave',args:{}};
   if(path==='/api/matches'&&method==='POST')return{rpc:'sideout_match_create',args:{p_code:body.playerCode}};
   const action=path.match(/^\/api\/(duos|matches)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(respond|result|cancel)$/i);
@@ -48,9 +50,11 @@ function providerError(error){
 function signInRedirect(location){
   const url=new URL(location?.href||'http://localhost:3000/');
   const player=(url.searchParams.get('player')||(url.hash.startsWith('#connect/')?url.hash.slice(9):'')).toUpperCase();
+  const duo=url.searchParams.getAll('duo');
   // Supabase appends its own token fragment; app navigation starts after SDK initialization.
   url.search='';url.hash='';
   if(/^SO-[A-F0-9]{12}$/.test(player||''))url.searchParams.set('player',player);
+  if(duo.length===1&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(duo[0]))url.searchParams.set('duo',duo[0].toLowerCase());
   return url.href;
 }
 

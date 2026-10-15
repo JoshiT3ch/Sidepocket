@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderPlayerQr, decodePlayerQr, parsePlayerCode } from '../dist/qr.js';
+import { renderPlayerQr, renderDuoQr, decodePlayerQr, parsePlayerCode, playerLink, duoLink, parseDuoInvite } from '../dist/qr.js';
+const website='https://sideout-valencia.dchiligan.chatgpt.site';
+const token='a2790e87-4509-4625-9dad-c3acc267c2f7';
 
 // Minimal pixel canvas: executes the actual renderer's drawing commands into RGBA.
 function pixelCanvas(width = 290) {
@@ -42,9 +44,9 @@ test('player code parser rejects unrelated text, invalid codes, unsafe URLs, and
 test('rendered player QRs round-trip through the independent jsQR pixel decoder', () => {
   for (const [code, width] of [['SO-012345ABCDEF', 290], ['SO-000000000000', 256], ['SO-FFFFFFFFFFFF', 360]]) {
     const canvas = pixelCanvas(width);
-    assert.equal(renderPlayerQr(canvas, code), `SIDEOUT:${code}`);
+    assert.equal(renderPlayerQr(canvas, code,website), `${website}/?player=${code}#play`);
     assert.equal(canvas.width, canvas.height);
-    assert.equal(decodePlayerQr(canvas), `SIDEOUT:${code}`);
+    assert.equal(decodePlayerQr(canvas), `${website}/?player=${code}#play`);
     assert.equal(canvas.style.imageRendering, 'pixelated');
     const moduleSize = canvas.moduleSize;
     assert.ok(Number.isInteger(moduleSize));
@@ -60,7 +62,7 @@ test('rendered player QRs round-trip through the independent jsQR pixel decoder'
 
 test('player QRs still decode after rotation and inversion', () => {
   const canvas = pixelCanvas();
-  renderPlayerQr(canvas, 'SO-13579BDF2468');
+  renderPlayerQr(canvas, 'SO-13579BDF2468',website);
   const rotated = new Uint8ClampedArray(canvas.data.length);
   for (let y = 0; y < canvas.height; y++) {
     for (let x = 0; x < canvas.width; x++) {
@@ -69,17 +71,32 @@ test('player QRs still decode after rotation and inversion', () => {
       rotated.set(canvas.data.subarray(source, source + 4), target);
     }
   }
-  assert.equal(decodePlayerQr({ width: canvas.width, height: canvas.height, data: rotated }), 'SIDEOUT:SO-13579BDF2468');
+  assert.equal(decodePlayerQr({ width: canvas.width, height: canvas.height, data: rotated }), `${website}/?player=SO-13579BDF2468#play`);
   for (let i = 0; i < rotated.length; i += 4) {
     rotated[i] = 255 - rotated[i];
     rotated[i + 1] = 255 - rotated[i + 1];
     rotated[i + 2] = 255 - rotated[i + 2];
   }
-  assert.equal(decodePlayerQr({ width: canvas.width, height: canvas.height, data: rotated }), 'SIDEOUT:SO-13579BDF2468');
+  assert.equal(decodePlayerQr({ width: canvas.width, height: canvas.height, data: rotated }), `${website}/?player=SO-13579BDF2468#play`);
 });
 
 test('empty images and malformed image data return no QR instead of throwing', () => {
   assert.equal(decodePlayerQr({ width: 100, height: 100, data: new Uint8ClampedArray(40000).fill(255) }), null);
   for (const input of [null, {}, { width: -1, height: 3, data: new Uint8Array(12) }, { width: 3, height: 3, data: new Uint8Array(4) }, { width: 3.2, height: 3, data: new Uint8Array(36) }]) assert.equal(decodePlayerQr(input), null);
-  assert.throws(() => renderPlayerQr(pixelCanvas(), 'not-a-player'), /valid Sideout/);
+  assert.throws(() => renderPlayerQr(pixelCanvas(), 'not-a-player',website), /valid Sideout/);
+});
+
+test('duo QRs encode website invite URLs and remain readable when switching QR types repeatedly',()=>{
+ const canvas=pixelCanvas(360);
+ for(let i=0;i<4;i++){
+  const expected=duoLink(token,website);assert.equal(renderDuoQr(canvas,token,website),expected);assert.equal(decodePlayerQr(canvas),expected);
+  assert.equal(parseDuoInvite(decodePlayerQr(canvas),website),token);assert.ok(canvas.width>=300);
+  renderPlayerQr(canvas,'SO-012345ABCDEF',website);assert.equal(decodePlayerQr(canvas),playerLink('SO-012345ABCDEF',website));
+ }
+});
+
+test('duo links reject ambiguous, foreign-origin and unsafe scan payloads',()=>{
+ assert.equal(parseDuoInvite(`${website}/?duo=${token.toUpperCase()}#play`,website),token);
+ for(const input of [null,token,'SIDEOUT:'+token,`${website}/?duo=no`,`${website}/?duo=${token}&duo=${token}`,`https://other.example/?duo=${token}`,`https://user:password@sideout-valencia.dchiligan.chatgpt.site/?duo=${token}`,`javascript:alert(1)?duo=${token}`])assert.equal(parseDuoInvite(input,website),null,String(input));
+ assert.throws(()=>duoLink('no',website),/valid duo/);assert.throws(()=>playerLink('SO-012345ABCDEF','file:///tmp/test'),/website/);
 });

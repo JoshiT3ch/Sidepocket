@@ -48,6 +48,72 @@ test('QR duos and server-owned doubles ratings',{timeout:60000},async t=>{
   assert.equal((await request('/api/players/bad-code',{cookie:a.cookie})).status,400);
   assert.equal((await request('/api/duos',{method:'POST',data:{playerCode:b.code},cookie:a.cookie,foreignOrigin:'https://other.invalid'})).status,403);
  });
+ await t.test('consented duo links require login, avatars, valid opaque tokens and rotate old links',async()=>{
+  assert.equal((await request('/api/duos/link',{method:'POST',data:{}})).status,401);
+  assert.equal((await request('/api/duos/join',{method:'POST',data:{token:a.code}})).status,401);
+  assert.equal((await post(unready,'/api/duos/link')).status,409);
+  assert.equal((await post(a,'/api/duos/join',{token:a.code})).status,400);
+  assert.equal((await post(a,'/api/duos/join',{token:'00000000-0000-4000-8000-000000000000'})).status,404);
+  const first=await post(a,'/api/duos/link');assert.equal(first.status,201);
+  assert.match(first.json.token,/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+  assert.deepEqual(Object.keys(first.json).sort(),['expiresAt','token']);
+  assert.ok(first.json.expiresAt>Date.now()+23*60*60*1000&&first.json.expiresAt<=Date.now()+24*60*60*1000);
+  assert.equal((await post(a,'/api/duos/join',{token:first.json.token})).status,400);
+  assert.equal((await post(unready,'/api/duos/join',{token:first.json.token})).status,409);
+  const next=await post(a,'/api/duos/link');assert.notEqual(next.json.token,first.json.token);
+  assert.equal((await post(b,'/api/duos/join',{token:first.json.token})).status,409);
+  write(db=>db.prepare('UPDATE play_duo_links SET expires_at=0 WHERE token=?').run(next.json.token));
+  assert.equal((await post(b,'/api/duos/join',{token:next.json.token})).status,409);
+  assert.equal((await view(a)).duo,null);assert.equal((await view(b)).duo,null);
+ });
+ await t.test('a link joins once, cancels pending invites, retries safely and cannot recreate a left duo',async()=>{
+  await post(e,'/api/duos',{playerCode:a.code});
+  const ownerLink=(await post(a,'/api/duos/link')).json,partnerLink=(await post(b,'/api/duos/link')).json;
+  const pair=await post(b,'/api/duos/join',{token:ownerLink.token});assert.equal(pair.status,200);
+  const duoId=pair.json.duo.id;assert.deepEqual(pair.json.duo.players.map(item=>item.id),[a.id,b.id]);
+  assert.equal((await view(a)).duo.id,duoId);assert.equal((await view(a)).invitations.length,0);
+  assert.equal((await post(b,'/api/duos/join',{token:ownerLink.token.toUpperCase()})).json.duo.id,duoId);
+  assert.equal((await post(c,'/api/duos/join',{token:ownerLink.token})).status,409);
+  assert.equal((await post(c,'/api/duos/join',{token:partnerLink.token})).status,409);
+  assert.equal((await post(a,'/api/duos/link')).status,409);
+  assert.equal((await post(b,'/api/duos/leave')).status,200);
+  assert.equal((await post(b,'/api/duos/join',{token:ownerLink.token})).status,409);
+  assert.equal((await view(a)).duo,null);assert.equal((await view(b)).duo,null);
+ });
+ await t.test('an occupied recipient cannot consume a free owner link, and ordinary duos revoke unused links',async()=>{
+  const ownerLink=(await post(a,'/api/duos/link')).json,oldPartnerLink=(await post(b,'/api/duos/link')).json;
+  await post(c,'/api/duos',{playerCode:b.code});const invite=(await view(b)).invitations[0];await post(b,`/api/duos/${invite.id}/respond`,{accept:true});
+  assert.equal((await post(b,'/api/duos/join',{token:ownerLink.token})).status,409);
+  await post(c,'/api/duos/leave');
+  assert.equal((await post(d,'/api/duos/join',{token:oldPartnerLink.token})).status,409);
+  assert.equal((await post(b,'/api/duos/join',{token:ownerLink.token})).status,200);
+  await post(a,'/api/duos/leave');
+ });
+ await t.test('competing link claims form one duo and duplicate requests return the same active pair',async()=>{
+  const link=(await post(a,'/api/duos/link')).json;
+  const claims=await Promise.all([post(b,'/api/duos/join',{token:link.token}),post(c,'/api/duos/join',{token:link.token})]);
+  assert.deepEqual(claims.map(item=>item.status).sort(),[200,409]);
+  const winner=claims[0].status===200?b:c,loser=winner===b?c:b;
+  const duoId=(await view(a)).duo.id;assert.equal((await view(winner)).duo.id,duoId);assert.equal((await view(loser)).duo,null);
+  const retries=await Promise.all([post(winner,'/api/duos/join',{token:link.token}),post(winner,'/api/duos/join',{token:link.token})]);
+  assert.ok(retries.every(item=>item.status===200&&item.json.duo.id===duoId));
+  write(db=>{assert.equal(db.prepare('SELECT COUNT(*) AS total FROM play_duos WHERE dissolved_at IS NULL AND (player_a=? OR player_b=?)').get(a.id,a.id).total,1);});
+  await post(a,'/api/duos/leave');
+  const al=(await post(a,'/api/duos/link')).json,bl=(await post(b,'/api/duos/link')).json;
+  const cross=await Promise.all([post(a,'/api/duos/join',{token:bl.token}),post(b,'/api/duos/join',{token:al.token})]);
+  assert.deepEqual(cross.map(item=>item.status).sort(),[200,409]);assert.equal((await view(a)).duo.id,(await view(b)).duo.id);
+  await post(a,'/api/duos/leave');
+ });
+ await t.test('a failed claim rolls back duo creation, link use and invitation cancellation',async()=>{
+  const link=(await post(a,'/api/duos/link')).json;
+  await post(e,'/api/duos',{playerCode:a.code});
+  write(db=>db.exec("CREATE TRIGGER block_test_claim BEFORE UPDATE OF claimed_by ON play_duo_links BEGIN SELECT RAISE(ABORT,'test claim rollback'); END;"));
+  assert.equal((await post(b,'/api/duos/join',{token:link.token})).status,500);
+  assert.equal((await view(a)).duo,null);assert.equal((await view(b)).duo,null);assert.equal((await view(a)).invitations.length,1);
+  write(db=>{assert.equal(db.prepare('SELECT claimed_by FROM play_duo_links WHERE token=?').get(link.token).claimed_by,null);db.exec('DROP TRIGGER block_test_claim');});
+  assert.equal((await post(b,'/api/duos/join',{token:link.token})).status,200);
+  await post(a,'/api/duos/leave');
+ });
  await t.test('duo invitations reject self pairing and require only the invited partner to accept',async()=>{
   assert.equal((await post(a,'/api/duos',{playerCode:a.code})).status,400);
   assert.equal((await post(a,'/api/duos',{playerCode:b.code})).status,201);

@@ -23,7 +23,17 @@
     if(!query&&hash){const url=new URL(location.href);url.searchParams.set('player',code);history.replaceState(null,'',url);}
     return code;
   })();
-  function afterSignIn(){return pendingPlayer?'/?player='+encodeURIComponent(pendingPlayer)+'#play':'/#profile';}
+  const pendingDuo=(()=>{
+    const values=new URLSearchParams(location.search).getAll('duo');
+    return values.length===1&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(values[0])?values[0].toLowerCase():null;
+  })();
+  function afterSignIn(){
+    const query=new URLSearchParams();
+    if(pendingPlayer)query.set('player',pendingPlayer);
+    if(pendingDuo)query.set('duo',pendingDuo);
+    // The invite remains in this URL through avatar setup; no account can inherit a stored invite.
+    return query.size?'/?'+query+'#play':'/#profile';
+  }
   const serviceReady=import('./service.js').then(module=>module.getService()).then(service=>{
     window.sideoutService=service;
     provider=service.provider;
@@ -44,7 +54,7 @@
       mode='login';
       document.getElementById('auth-heading').textContent='Your next game starts here.';
       document.getElementById('auth-kicker').textContent='COME JOIN THE CLUBHOUSE.';
-      document.getElementById('auth-subtitle').textContent='Sign in with Google, create your pixel player, and make the court yours.';
+      document.getElementById('auth-subtitle').textContent=pendingDuo?'Sign in with Google to join this duo. New players create an avatar first.':'Sign in with Google, create your pixel player, and make the court yours.';
       error('');notice('');if(location.hash!=='#login')history.replaceState(null,'','#login');
       return;
     }
@@ -56,7 +66,7 @@
     document.getElementById('auth-password').type='password';document.getElementById('toggle-password').textContent='Show';document.getElementById('toggle-password').setAttribute('aria-label','Show password');document.getElementById('toggle-password').setAttribute('aria-pressed','false');
     document.getElementById('auth-heading').textContent=signup?'Join the clubhouse.':'Welcome back.';
     document.getElementById('auth-kicker').textContent=signup?'YOUR NEXT CHAPTER STARTS HERE.':'BACK FOR ANOTHER GAME?';
-    document.getElementById('auth-subtitle').textContent=signup?'Create your player. Find your style. Make it yours.':'Your player. Your progress. Right where you left them.';
+    document.getElementById('auth-subtitle').textContent=pendingDuo?(signup?'Create your account and avatar to join this duo.':'Log in to join this duo. Your player and progress stay with you.'):(signup?'Create your player. Find your style. Make it yours.':'Your player. Your progress. Right where you left them.');
     document.getElementById('auth-submit-label').textContent=signup?'Create my account':'Log in';
     document.querySelectorAll('.auth-tabs button').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.authMode===mode)));
     const switcher=document.getElementById('auth-switch');switcher.replaceChildren(document.createTextNode(signup?'Already part of the crew? ':'New to the clubhouse? '));
