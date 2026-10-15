@@ -31,30 +31,32 @@ const snapshot=(duo=null)=>({player:mine,duo,invitations:[],matches:[],history:[
 const paired=()=>snapshot({id:'duo-1',players:[mine,partner]});
 function deferred(){let resolve;const promise=new Promise(done=>{resolve=done;});return{promise,resolve};}
 
-async function withPlay({href=origin+'/#play',ready=true,request}={},run){
+async function withPlay({href=origin+'/#play',ready=true,request,onDuoFormed}={},run){
  const globals=['document','window','location','navigator','setInterval','clearInterval'];
  const previous=new Map(globals.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
  const nodes=Object.fromEntries(ids.map(id=>{const node=new Element(buttonIds.has(id)?'button':id==='player-qr'?'canvas':'div');node.id=id;return[id,node];}));
  nodes.play.children.push(...Object.values(nodes).filter(node=>node!==nodes.play));
- const calls=[],routes=[],copies=[],page={id:'play'};let current=new URL(href),avatarReady=ready;
+ const calls=[],routes=[],copies=[],formations=[],polls=[],page={id:'play'};let current=new URL(href),avatarReady=ready;
  const location={get href(){return current.href;},get origin(){return current.origin;}};
  const document={hidden:false,getElementById:id=>nodes[id],createElement:tag=>new Element(tag),createTextNode:text=>({textContent:String(text)}),querySelector:selector=>selector==='.page.active'?page:null};
  const service={async request(path,options={}){const body=options.body===undefined?undefined:JSON.parse(options.body);calls.push({path,body,method:options.method||'GET'});return request?request(path,body,calls):snapshot();}};
  const window={location,history:{replaceState(_state,_title,url){current=new URL(url,current);}},sideoutService:service,addEventListener(){}};
- for(const [key,value]of Object.entries({document,window,location,navigator:{clipboard:{async writeText(value){copies.push(value);}}},setInterval:()=>1,clearInterval:()=>{}}))Object.defineProperty(globalThis,key,{value,configurable:true,writable:true});
- const context={nodes,calls,routes,copies,location,setReady(value){avatarReady=value;},setUrl(value){current=new URL(value,current);}};
- try{context.controller=await initPlay({getAvatarCreated:()=>avatarReady,onNavigate:route=>{routes.push(route);page.id=route;}});await run(context);}
+ for(const [key,value]of Object.entries({document,window,location,navigator:{clipboard:{async writeText(value){copies.push(value);}}},setInterval:(callback,delay)=>{polls.push({callback,delay});return polls.length;},clearInterval:()=>{}}))Object.defineProperty(globalThis,key,{value,configurable:true,writable:true});
+ const context={nodes,calls,routes,copies,formations,polls,location,setReady(value){avatarReady=value;},setUrl(value){current=new URL(value,current);},async poll(){for(const {callback}of polls)callback();await new Promise(resolve=>setImmediate(resolve));}};
+ try{context.controller=await initPlay({getAvatarCreated:()=>avatarReady,onNavigate:route=>{routes.push(route);page.id=route;},onDuoFormed:(player,duo)=>{formations.push({player,duo});onDuoFormed?.(player,duo);}});await run(context);}
  finally{for(const [key,descriptor]of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}}
 }
 
-test('duo intent waits for avatar completion, then pairs once and removes the consumed invite URL',()=>withPlay({href:`${origin}/?duo=${token}&player=${partner.code}#avatar`,ready:false,request:path=>path==='/api/duos/join'?paired():snapshot()},async({controller,calls,nodes,location,setReady})=>{
+test('duo intent waits for avatar completion, then pairs once and removes the consumed invite URL',()=>withPlay({href:`${origin}/?duo=${token}&player=${partner.code}#avatar`,ready:false,request:path=>path==='/api/duos/join'?paired():snapshot()},async({controller,calls,nodes,location,setReady,formations})=>{
  assert.deepEqual(calls,[]);await controller.handleNavigation('play');assert.deepEqual(calls,[]);
  assert.equal(new URL(location.href).searchParams.get('duo'),token);
  setReady(true);await controller.handleNavigation('play');
  assert.deepEqual(calls.map(({path})=>path),['/api/play','/api/duos/join']);assert.deepEqual(calls[1].body,{token});
  assert.equal(new URL(location.href).search,'');assert.equal(new URL(location.href).hash,'#play');
  assert.match(nodes['my-duo'].textContent,/Court Friend/);assert.match(nodes['play-status'].textContent,/You’re a duo/);
+ assert.equal(formations.length,1);assert.deepEqual(formations[0],{player:mine,duo:paired().duo});
  await controller.handleNavigation('play');assert.equal(calls.filter(call=>call.path==='/api/duos/join').length,1);
+ assert.equal(formations.length,1);
 }));
 
 test('simultaneous navigation while an invite is joining cannot submit the claim twice',async()=>{
@@ -70,10 +72,12 @@ test('simultaneous navigation while an invite is joining cannot submit the claim
 
 test('a failed claim keeps the current invite and Refresh retries it without losing the token',async()=>{
  let attempts=0;
- await withPlay({href:`${origin}/?duo=${token}#play`,request:path=>{if(path==='/api/duos/join'){if(++attempts===1)throw new Error('Connection interrupted.');return paired();}return snapshot();}},async({nodes,calls,location})=>{
+ await withPlay({href:`${origin}/?duo=${token}#play`,request:path=>{if(path==='/api/duos/join'){if(++attempts===1)throw new Error('Connection interrupted.');return paired();}return snapshot();}},async({nodes,calls,location,formations})=>{
   assert.equal(new URL(location.href).searchParams.get('duo'),token);assert.equal(nodes['play-error'].hidden,false);assert.match(nodes['play-error'].textContent,/Connection interrupted/);
+  assert.equal(formations.length,0);
   await nodes['refresh-play'].click();assert.equal(attempts,2);assert.equal(new URL(location.href).searchParams.has('duo'),false);assert.equal(nodes['play-error'].hidden,true);
   assert.deepEqual(calls.filter(call=>call.path==='/api/duos/join').map(call=>call.body),[{token},{token}]);
+  assert.equal(formations.length,1);
  });
 });
 
@@ -98,3 +102,48 @@ test('ambiguous or malformed duo links never call the join endpoint',async()=>{
   assert.equal(calls.some(call=>call.path==='/api/duos/join'),false);assert.match(nodes['play-error'].textContent,/invalid/);assert.equal(new URL(location.href).searchParams.has('duo'),true);
  });
 });
+
+test('an existing duo on initial load does not celebrate again on navigation or repeated refreshes',()=>withPlay({request:()=>paired()},async({controller,formations,poll})=>{
+ assert.deepEqual(formations,[]);
+ await controller.refresh();await controller.handleNavigation('play');await poll();await poll();
+ assert.deepEqual(formations,[]);
+}));
+
+test('the invite owner celebrates a newly joined teammate once when the normal poll discovers the duo',async()=>{
+ let current=snapshot();
+ await withPlay({request:()=>current},async({formations,polls,poll,controller})=>{
+  assert.deepEqual(formations,[]);assert.equal(polls.length,1);assert.equal(polls[0].delay,20000);
+  current=paired();await poll();
+  assert.deepEqual(formations,[{player:mine,duo:current.duo}]);
+  await poll();await controller.refresh();
+  assert.equal(formations.length,1,'the same persisted duo must not replay on every refresh');
+ });
+});
+
+test('accepting a traditional invitation celebrates, leaving does not, and a later new duo can celebrate',async()=>{
+ let current={...snapshot(),invitations:[{id:'invite-1',from:partner}]};
+ await withPlay({request:path=>{
+  if(path==='/api/duos/invite-1/respond')current=paired();
+  if(path==='/api/duos/leave')current=snapshot();
+  return current;
+ }},async({nodes,formations,controller})=>{
+  const accept=nodes['duo-invitations'].querySelectorAll('button').find(button=>button.textContent==='Accept duo ↗');
+  assert.ok(accept);assert.deepEqual(formations,[]);await accept.click();
+  assert.equal(formations.length,1);assert.equal(formations[0].duo.id,'duo-1');
+  const leave=nodes['my-duo'].querySelectorAll('button').find(button=>button.textContent==='Leave this duo');
+  assert.ok(leave);await leave.click();assert.equal(formations.length,1);
+  await controller.refresh();assert.equal(formations.length,1);
+  current=snapshot({id:'duo-2',players:[partner,mine]});await controller.refresh();
+  assert.equal(formations.length,2);assert.equal(formations[1].duo.id,'duo-2');
+  await controller.refresh();assert.equal(formations.length,2);
+ });
+});
+
+test('a failed visual effect cannot undo a successful QR claim or keep its consumed invite URL',()=>withPlay({href:`${origin}/?duo=${token}#play`,request:path=>path==='/api/duos/join'?paired():snapshot(),onDuoFormed(){throw new Error('Canvas unavailable.');}},async({nodes,formations,location,calls})=>{
+ assert.equal(formations.length,1);
+ assert.equal(new URL(location.href).searchParams.has('duo'),false);
+ assert.equal(nodes['play-error'].hidden,true);
+ assert.match(nodes['my-duo'].textContent,/Court Friend/);
+ assert.match(nodes['play-status'].textContent,/You’re a duo/);
+ assert.equal(calls.filter(call=>call.path==='/api/duos/join').length,1);
+}));

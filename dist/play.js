@@ -7,7 +7,7 @@ const average=players=>Math.round(players.reduce((sum,player)=>sum+Number(player
 const sideName=players=>players.map(player=>player.name).join(' & ');
 const shortDate=value=>{const date=new Date(value);return Number.isFinite(date.getTime())?date.toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';};
 
-export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreated=()=>true}={}){
+export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreated=()=>true,onDuoFormed=()=>{}}={}){
  const root=document.getElementById('play');
  if(!root)return{refresh:async()=>{},handleNavigation:async()=>{},closeScanner:()=>{}};
  const byId=id=>document.getElementById(id);
@@ -33,10 +33,15 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   return row;
  };
  const applyData=async next=>{
+  const hadSnapshot=data!==null,previousDuoId=data?.duo?.id;
   data=next;
   if(connected){try{connected=await api(`/api/players/${encodeURIComponent(connected.player.code)}`);}catch{connected=null;}}
   await onStats({rating:next.player.rating,games:next.player.games,wins:next.player.wins,history:next.history||[]});
   render();
+  if(hadSnapshot&&next.duo?.id&&next.duo.id!==previousDuoId){
+   // A visual effect must never turn a successful pairing into an action error.
+   try{onDuoFormed(next.player,next.duo);}catch{}
+  }
  };
  const setBusy=value=>{busy=value;root.querySelectorAll('button').forEach(button=>button.disabled=value);root.setAttribute('aria-busy',String(value));};
  const runAction=async(path,body,message)=>{

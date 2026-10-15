@@ -7,6 +7,9 @@ const {drawAvatar,drawClothingThumbnail,drawHairThumbnail}=await import('./pixel
 const {STORY_TEMPLATES,drawStoryCard,storyFilename}=await import('./story-card.js');
 const {createStoryShare}=await import('./story-share.js');
 const {parseDuoInvite}=await import('./qr.js');
+const {createDuoCelebration}=await import('./duo-celebration.js');
+const duoCelebration=createDuoCelebration();
+window.addEventListener('pagehide',()=>duoCelebration.hide());
 const {HAIRSTYLES,HAIR_COLORS,normalizeHair,hairstylesFor}=await import('./hairstyles.js');
 const defaults = {name:account.user.name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',height:170,bodyType:'regular',characterType:'male',avatarCreated:false,rating:1200,games:0,wins:0,history:[]};
 const colors = {skin:[['#f1c49b','Light'],['#cf986c','Tan'],['#a96c4b','Warm'],['#704630','Deep']],shirt:[['#ed795d','Coral'],['#a6bce0','Sky'],['#ede8cd','Cream'],['#8da65d','Moss'],['#b59fc6','Lilac']],paddle:[['#7286bb','Blue'],['#ed795d','Coral'],['#d2e48e','Lime'],['#8f709d','Purple']]};
@@ -43,7 +46,7 @@ async function startPlay(){
   playStarting=true;
   try{
     const {initPlay}=await import('./play.js');
-    playController=await initPlay({onStats:stats=>{matchStats=stats;render();},onNavigate:navigate,getAvatarCreated:()=>state.avatarCreated});
+    playController=await initPlay({onStats:stats=>{matchStats=stats;render();},onNavigate:navigate,getAvatarCreated:()=>state.avatarCreated,onDuoFormed:(player,duo)=>duoCelebration.show(player,duo)});
     await playController.handleNavigation(document.querySelector('.page.active')?.id||'profile');
   }catch(error){toast(error.message||'Could not load player connections. Refresh and try again.');}
   finally{playStarting=false;}

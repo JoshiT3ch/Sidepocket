@@ -44,6 +44,8 @@ For automatic pairing, tap **Create duo invite QR** while you are free to form a
 
 The invite stays in the current URL through login and Google OAuth; it is removed after a successful join. It is not stored across unrelated accounts. If joining fails, the link stays available for an explicit retry with **Refresh**. **Show player QR** returns to the normal profile lookup QR for opponents.
 
+When a new duo forms, a green full-screen celebration shows both saved pixel characters side by side with **Duo with [teammate name]**. It pops into view and disappears automatically after three seconds. It also appears when a traditional invite is accepted or a refresh detects a newly formed duo, and does not replay for an existing duo on initial load or repeated refreshes. Reduced-motion preferences keep the same three-second display without the movement.
+
 The normal player QR lets people find your profile without pairing automatically. Choose **Invite as my duo** to send a traditional teammate invitation; the other player accepts it in Sideout. Each player can belong to one active duo. Duo invite QRs are the separate path that already has the creator's consent to pair.
 
 Scan a player from another duo and choose **Challenge their duo**. A player on that duo accepts the challenge. Any of the four participants can then select the winning duo and record the result. One submission updates all four ratings immediately; there is no additional result confirmation. The match records who submitted it, the winner, and each player's before/after rating. Completed results cannot be submitted again. Unplayed games can be cancelled without changing ratings.
