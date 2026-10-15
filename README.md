@@ -63,7 +63,9 @@ Application tables live in the private `sideout` schema. Browser roles have no d
 
 Open **My player → Make my story card** and choose **Rally Shot**, **Court Pose**, or **Player Card**. Rally Shot captures a paddle swing with a ball trail on a pixel court. Court Pose puts the character on the court for a player portrait. Player Card keeps the simple clubhouse poster.
 
-Each template uses the player's current character, hair, equipped clothing, and authoritative doubles rating. Preview the selected design, then download its 1080 × 1920 PNG and upload it to Instagram or Facebook Stories. Choosing a template changes the card artwork only and does not change the saved avatar or rating.
+Each template uses the player's current character, hair, equipped clothing, and authoritative doubles rating. Preview the selected design, then tap **Share story card** to pass its 1080 × 1920 PNG to your device's share menu. Choose Instagram/Stories when offered. The website cannot select an app or confirm publication; Instagram account connection is not required. **Save PNG** remains available for manual upload to Instagram or Facebook Stories. Choosing a template changes the card artwork only and does not change the saved avatar or rating.
+
+Sharing requires a browser that supports image files through the Web Share API over HTTPS (or a trusted local context). The card is prepared before the Share tap to preserve the browser's user gesture requirement. Unsupported browsers and sharing failures show manual steps, while cancellation leaves the preview intact. A resolved share request means a handoff to the device, not a posted Instagram Story.
 
 ## Leaderboard
 

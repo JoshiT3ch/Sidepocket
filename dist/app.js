@@ -5,6 +5,7 @@ if(!account)return;
 const {WARDROBE,DEFAULT_EQUIPMENT,CATEGORY_LABELS,getItem,outfitItems}=await import('./wardrobe.js');
 const {drawAvatar,drawClothingThumbnail,drawHairThumbnail}=await import('./pixel-player.js');
 const {STORY_TEMPLATES,drawStoryCard,storyFilename}=await import('./story-card.js');
+const {createStoryShare}=await import('./story-share.js');
 const {HAIRSTYLES,HAIR_COLORS,normalizeHair,hairstylesFor}=await import('./hairstyles.js');
 const defaults = {name:account.user.name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',height:170,bodyType:'regular',characterType:'male',avatarCreated:false,rating:1200,games:0,wins:0,history:[]};
 const colors = {skin:[['#f1c49b','Light'],['#cf986c','Tan'],['#a96c4b','Warm'],['#704630','Deep']],shirt:[['#ed795d','Coral'],['#a6bce0','Sky'],['#ede8cd','Cream'],['#8da65d','Moss'],['#b59fc6','Lilac']],paddle:[['#7286bb','Blue'],['#ed795d','Coral'],['#d2e48e','Lime'],['#8f709d','Purple']]};
@@ -77,7 +78,7 @@ function renderHistory(){
 function render(){document.querySelectorAll('.player-name').forEach(e=>e.textContent=state.name.trim()||defaults.name);document.querySelectorAll('[data-rating]').forEach(e=>e.textContent=matchStats?.rating??'—');document.querySelectorAll('[data-rank]').forEach(e=>e.textContent=rank());document.querySelectorAll('[data-games]').forEach(e=>e.textContent=matchStats?.games??0);document.querySelectorAll('[data-wins]').forEach(e=>e.textContent=matchStats?.wins??0);document.querySelectorAll('[data-winrate]').forEach(e=>e.textContent=matchStats?.games??0?Math.round(matchStats.wins/matchStats.games*100)+'%':'—');document.querySelector('.rating-track span').style.width=Math.min((matchStats?.games??0)/5*100,100)+'%';drawScene(document.getElementById('hero-avatar'));drawScene(document.getElementById('locker-avatar'));drawScene(document.getElementById('setup-avatar'));renderOptions();renderHistory();syncAvatarControls();renderWardrobe();if(document.getElementById('story-dialog').open){renderStoryChoices();story();}}
 function navigate(page){if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();}
 let storyTemplate=STORY_TEMPLATES[0].id;
-function story(){const canvas=drawStoryCard(document.getElementById('story-canvas'),{profile:state,stats:matchStats,template:storyTemplate});const choice=STORY_TEMPLATES.find(item=>item.id===storyTemplate);canvas.setAttribute('aria-label',`${choice.name} story card for ${state.name.trim()||defaults.name}, with your pixel character and current doubles rating`);return canvas;}
+function story(){const canvas=drawStoryCard(document.getElementById('story-canvas'),{profile:state,stats:matchStats,template:storyTemplate});const choice=STORY_TEMPLATES.find(item=>item.id===storyTemplate);canvas.setAttribute('aria-label',`${choice.name} story card for ${state.name.trim()||defaults.name}, with your pixel character and current doubles rating`);storyShare.prepare(canvas,storyFilename(storyTemplate));return canvas;}
 let chosenBody=state.avatarCreated?state.bodyType:null;
 const setupHeight=document.getElementById('setup-height');
 const setupRange=document.getElementById('setup-height-range');
@@ -177,6 +178,33 @@ document.getElementById('nickname').addEventListener('input',e=>{state.name=e.ta
 document.getElementById('save-look').addEventListener('click',async()=>{const heightInput=document.getElementById('locker-height');if(!heightInput.checkValidity()){heightInput.closest('details').open=true;heightInput.reportValidity();return;}state.height=Number(heightInput.value);state.name=state.name.trim()||defaults.name;document.getElementById('nickname').value=state.name;const saved=await persist();render();if(saved)toast('Your look is saved. See you on the court.');navigate('profile');});
 document.getElementById('random-look').addEventListener('click',()=>{const pick=items=>items[Math.floor(Math.random()*items.length)];state.capId=pick(WARDROBE.caps).id;const shirt=pick(WARDROBE.shirts);state.shirtId=shirt.id;state.shirt=shirt.color;state.bottomId=pick([...WARDROBE.shorts,...WARDROBE.pants]).id;state.hat='cap';persist();render();toast('A fresh court fit, just for you.');});
 const dialog=document.getElementById('story-dialog');
+const shareStoryButton=document.getElementById('share-story');
+const shareStoryLabel=document.getElementById('share-story-label');
+const shareStoryStatus=document.getElementById('story-share-status');
+const storyShareFallback=document.getElementById('story-share-fallback');
+let manualShareRequested=false;
+const storyShare=createStoryShare({onState:({phase})=>{
+  shareStoryButton.disabled=phase==='preparing'||phase==='sharing';
+  shareStoryLabel.textContent=phase==='preparing'?'Preparing your card…':phase==='sharing'?'Sharing…':'Share story card';
+  const messages={
+    preparing:'Getting your selected card ready to share.',
+    ready:'Ready. Choose Instagram or Stories in your phone’s share menu, if available.',
+    unsupported:'This browser can’t share images directly. Save the PNG, then add it to your Instagram Story.',
+    error:'Sharing couldn’t open. Try again, or save the PNG and add it in Instagram.',
+    sharing:'Choose Instagram or Stories in the share menu, if available.',
+    'handed-off':'Your card was handed to your device. Finish sharing in the app you chose.',
+    canceled:'Sharing canceled. Your card is still here when you’re ready.'
+  };
+  shareStoryStatus.textContent=messages[phase]||'';
+  if(phase==='ready')storyShareFallback.hidden=true;
+  if(manualShareRequested&&(phase==='unsupported'||phase==='error'))storyShareFallback.hidden=false;
+}});
+shareStoryButton.addEventListener('click',()=>{
+  manualShareRequested=true;
+  // Call directly from the gesture: the PNG is already prepared before this tap.
+  storyShare.share();
+});
+dialog.addEventListener('close',()=>{storyShare.invalidate();manualShareRequested=false;storyShareFallback.hidden=true;});
 const templateChoices=document.getElementById('story-templates');
 function renderStoryChoices(){
   const source=document.createElement('canvas');
