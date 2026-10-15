@@ -1,6 +1,6 @@
 # Supabase backend
 
-The configured project is **Sideout**, ref `pbfqudxyjklntneipjpq`. The static browser client reads its public URL and publishable key from `dist/connection.js`; account and application data remain in Supabase.
+The configured project remains **Sideout**, ref `pbfqudxyjklntneipjpq`. The canonical website is `https://sideout-valenciacity.vercel.app`, served by Vercel project `prj_wOFyOpHTDgn1VFBSIbeaqLWDqnFj` from the repository's `dist/` directory (Framework Preset **Other**, no install or build command, Output Directory `.`). The static browser client reads its public URL and publishable key from `dist/connection.js`; account and application data remain in the same Supabase project. This hosting change requires no database migration.
 
 ## Schema and API
 
@@ -31,20 +31,25 @@ Profiles and ladder records initialize on authenticated use. Avatar completion i
 
 The hosted interface is Google-first: **Continue with Google** creates an account or signs in an existing player. Cloud email/password form submissions are rejected by the browser service; the optional local SQLite backend and its email/password forms remain available. This interface change does not disable Supabase email-confirmation protections.
 
-The Supabase **Site URL** is already configured as `https://sideout-valencia.dchiligan.chatgpt.site`. Its redirect allowlist is restricted to that website, including player-link queries and callback fragments. Ordinary sign-ins return to `/#profile`; valid player links return to `/?player=SO-…#play`. Keep any development-only localhost redirects out of production settings unless they are actively needed. See [Supabase redirect URL matching rules](https://supabase.com/docs/guides/auth/redirect-urls).
+The Supabase **Site URL** is configured as `https://sideout-valenciacity.vercel.app`. These origin-specific redirect allowlist entries were verified after saving, so player and duo-invite links can survive login on both hosted addresses:
 
-Google OAuth project/provider configuration is in progress. A successful live Google → Supabase → Sideout login has not yet been verified. Finish and check these settings before announcing Google login as ready:
+- `https://sideout-valenciacity.vercel.app/**`
+- `https://sideout-valencia.dchiligan.chatgpt.site/**`
+
+Do not allow all `vercel.app` or `chatgpt.site` websites. The browser passes a same-origin callback URL with validated `player` or `duo` query parameters and no app hash; the Supabase SDK consumes its token fragment before app navigation. Ordinary sign-ins then open `/#profile`, valid player links open `/?player=SO-…#play`, and duo invites continue through avatar setup before joining. Keep development-only localhost redirects out of production settings unless actively needed. See [Supabase redirect URL matching rules](https://supabase.com/docs/guides/auth/redirect-urls).
+
+A real Google sign-in from a player link on the Vercel website returned to the new origin's `#play` page and loaded the existing profile and duo. The player-link destination was preserved. Use the following Google provider settings and repeat the full production checklist after a hosting-origin change:
 
 1. In Google Cloud, use a Google Auth Platform project with an **External** audience and publish it **In production** for the public launch.
 2. Configure only the basic identity scopes: `openid`, `email` (`https://www.googleapis.com/auth/userinfo.email`), and `profile` (`https://www.googleapis.com/auth/userinfo.profile`). Do not add Gmail, Drive, or other sensitive/restricted scopes.
-3. Create a **Web application** OAuth client with this exact **Authorized JavaScript origin**: `https://sideout-valencia.dchiligan.chatgpt.site`.
+3. Use a **Web application** OAuth client with **Authorized JavaScript origin** `https://sideout-valenciacity.vercel.app`. Retain the previous origin `https://sideout-valencia.dchiligan.chatgpt.site` while that website remains available.
 4. Set this exact **Authorized redirect URI**: `https://pbfqudxyjklntneipjpq.supabase.co/auth/v1/callback`. This is the Supabase callback, not a Sideout page.
 5. Save the Google client ID and client secret in the project's **Authentication → Sign In / Providers → Google** settings and enable that provider. The secret belongs only in Supabase, never in `dist/`, browser code, this repository, or screenshots. Keep nonce checks and email-verification protections enabled.
 6. From the production website, complete a sign-in with a Google account the tester controls. Verify the return to Sideout, mandatory avatar creation, profile save, logout, and subsequent login. Repeat from a valid player QR link to confirm its destination survives the OAuth round trip. Also verify cancellation returns a usable sign-in screen.
 
 The existing database supports Google users without another SQL migration: profiles initialize from the authenticated user ID, use a safe display-name fallback when provider metadata is absent, and require avatar completion before play.
 
-A purchased domain and custom SMTP are not prerequisites for this basic Google login. Google permits published external apps using only basic identity scopes without verified branding; the consent screen will show the shared Supabase auth domain (`pbfqudxyjklntneipjpq.supabase.co`) instead of verified Sideout branding. Custom domains and brand verification are recommended improvements. Do not claim ownership of the shared `supabase.co` or `chatgpt.site` domains when configuring verification. Workspace administrators can still block apps for their users. See [Supabase Google setup](https://supabase.com/docs/guides/auth/social-login/auth-google), [Google OAuth app states](https://developers.google.com/identity/protocols/oauth2/production-readiness/overview), and [Google brand verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification).
+A purchased domain and custom SMTP are not prerequisites for this basic Google login. Google permits published external apps using only basic identity scopes without verified branding; the consent screen will show the shared Supabase auth domain (`pbfqudxyjklntneipjpq.supabase.co`) instead of verified Sideout branding. Custom domains and brand verification are recommended improvements. Do not claim ownership of the shared `supabase.co`, `vercel.app`, or `chatgpt.site` domains when configuring verification. Workspace administrators can still block apps for their users. See [Supabase Google setup](https://supabase.com/docs/guides/auth/social-login/auth-google), [Google OAuth app states](https://developers.google.com/identity/protocols/oauth2/production-readiness/overview), and [Google brand verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification).
 
 ## Optional email Auth later
 
@@ -76,7 +81,7 @@ Apply `migrations/20261015045300_sideout_duo_links.sql`, then `migrations/202610
 
 The owner explicitly creates a one-use UUID invite valid for 24 hours. Rotation replaces older unused links. Joining requires a completed avatar for both players, no existing duo, and no unfinished match. The transaction locks both players in the existing deterministic order, claims the link, creates membership, and cancels conflicting pending invitations. A retry returns only the same original active duo. A consumed link cannot recreate a dissolved duo, and ordinary duo creation revokes unused owner links.
 
-The browser carries `?duo=UUID` through login, Google OAuth and avatar creation. Supabase must allow the production callback with that query. The project's existing `https://sideout-valencia.dchiligan.chatgpt.site/**` redirect entry was verified and already covers it; no provider or credential change was needed.
+The browser carries `?duo=UUID` through login, Google OAuth and avatar creation. Supabase must allow the callback with that query. Keep both `https://sideout-valenciacity.vercel.app/**` and `https://sideout-valencia.dchiligan.chatgpt.site/**` in the redirect allowlist. Saved QR links still open the origin encoded in the image, so keep the previous website accessible. Generate and share fresh player and duo-invite QRs from the Vercel website for future use. Existing Supabase accounts, avatars, ratings, and active duos are shared across both addresses; browser sessions are origin-specific.
 
 `tests/duo-links.sql` was executed successfully against the project as a transaction ending in `ROLLBACK`; its fixture users were confirmed absent afterward. It checks anonymous and identity denial, private-table restrictions, incomplete avatars, self-joins, invalid/expired/replaced links, one-use claims, safe retries, conflicting duos, ordinary-invite invalidation, and transaction rollback. The JavaScript suite separately verifies API behavior, actual QR raster decoding, auth redirects, and automatic joining after avatar completion. A local browser test also completed a fresh signup and avatar from an invite and showed both players in the resulting duo.
 

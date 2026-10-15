@@ -4,11 +4,23 @@ A pickleball website for the Valencia City, Bukidnon community: accounts, custom
 
 ## Website and Supabase
 
-The public website is [Sideout](https://sideout-valencia.dchiligan.chatgpt.site). It is a static build in `dist/`. Its default connection in `dist/connection.js` uses the **Sideout** Supabase project (`pbfqudxyjklntneipjpq`) at `https://pbfqudxyjklntneipjpq.supabase.co`. The cloud interface uses **Continue with Google** for account creation and sign-in; PostgreSQL handles profiles, player codes, duos, matches, and ratings. A Node server is not required by the hosted website.
+The canonical public website is [Sideout](https://sideout-valenciacity.vercel.app). It is a static build in `dist/`, hosted by Vercel. Its default connection in `dist/connection.js` still uses the existing **Sideout** Supabase project (`pbfqudxyjklntneipjpq`) at `https://pbfqudxyjklntneipjpq.supabase.co`. The cloud interface uses **Continue with Google** for account creation and sign-in; PostgreSQL handles profiles, player codes, duos, matches, and ratings. A Node server is not required by the hosted website.
+
+The source repository is `JoshiT3ch/Sidepocket`. Vercel project `prj_wOFyOpHTDgn1VFBSIbeaqLWDqnFj` uses these static deployment settings:
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `dist` |
+| Framework Preset | Other |
+| Install Command | None |
+| Build Command | None |
+| Output Directory | `.` |
+
+Keep the [previous website address](https://sideout-valencia.dchiligan.chatgpt.site) accessible for saved player and duo-invite QR links. New QRs opened or created on the Vercel website use its new origin; share fresh QRs from that address going forward. Both websites use the same Supabase accounts and game data, but browser sign-in sessions are separate for each origin, so players may need to sign in again on Vercel.
 
 The browser uses a publishable key. This key is intentionally public; service-role keys, secret keys, database passwords, and SMTP credentials must never be placed in `dist/` or committed. The pinned Supabase browser SDK is served locally from `dist/vendor/`; its version, checksum, and license are recorded in `dist/vendor/SUPABASE-PROVENANCE.md`.
 
-Google login does not require a purchased website domain or signup confirmation emails. The production Supabase Site URL and redirect allowlist are already configured for the free website address. Google OAuth project/provider configuration and an end-to-end production login still need verification; see `supabase/README.md` for the exact settings. Resend/custom SMTP is optional future work if email/password signup is restored. Password recovery is not implemented in this interface.
+Google login does not require a purchased website domain or signup confirmation emails. The production Supabase Site URL is configured for Vercel, with redirects retained for the previous address while its QR links remain in use. A real Google sign-in from a player QR link was verified on the Vercel website, including loading the existing profile and duo. See `supabase/README.md` for the exact settings and production login checklist. Resend/custom SMTP is optional future work if email/password signup is restored. Password recovery is not implemented in this interface.
 
 ## Preview locally
 
