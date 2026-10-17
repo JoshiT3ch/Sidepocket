@@ -302,6 +302,25 @@ test('local court transport keeps the same routes, origin credentials and mutati
   assert.equal(calls.length,4);
 });
 
+test('friends routes map only to authenticated friend gateways with explicit arguments',async()=>{
+  const data={friends:[],incoming:[],outgoing:[]};
+  const {service,calls}=fixture({rpcData:data});
+  for(const [path,options,rpc,args]of [
+    ['/api/friends',{},'sideout_friends',{}],
+    ['/api/friends/request',post({playerCode}),'sideout_friend_request',{p_code:playerCode}],
+    [`/api/friends/${id}/respond`,post({accept:true}),'sideout_friend_respond',{p_id:id,p_accept:true}],
+    [`/api/friends/${id}/cancel`,post({}),'sideout_friend_cancel',{p_id:id}],
+    [`/api/friends/${id}/remove`,post({}),'sideout_friend_remove',{p_id:id}]
+  ]){
+    assert.deepEqual(await service.request(path,options),data);
+    assert.deepEqual(calls.at(-1),['rpc',rpc,args]);
+  }
+  const before=calls.length;
+  for(const path of ['/api/friends/not-a-uuid/remove',`/api/friends/${id}/delete`,'/api/friends/request?user=other'])await assert.rejects(service.request(path,post({})),{status:404});
+  await assert.rejects(service.request(`/api/friends/${id}/remove`,{method:'DELETE'}),{status:404});
+  assert.equal(calls.length,before);
+});
+
 test('unsupported routes and methods never call arbitrary database functions',async()=>{
   const {service,calls}=fixture();
   for(const [path,options] of [

@@ -98,3 +98,21 @@ The gateways derive identity from authentication, require a completed avatar for
 ## Existing local data
 
 The optional Node/SQLite backend remains available for local development. Its `.data/sideout.sqlite` is excluded from source and static hosting. This release does not transfer local accounts, password hashes, avatars, or ratings into Supabase. Players from the local prototype create new cloud accounts; retain the local database if its data is needed later.
+
+## Friends
+
+Apply `migrations/20261017152442_sideout_friends.sql` after the existing migrations and before releasing the Friends UI. It adds private `sideout.friendships`, whose request history retains abuse-prevention timestamps, plus these authenticated gateways:
+
+| Function | Purpose |
+| --- | --- |
+| `sideout_friends()` | Read the caller's accepted friends and incoming/outgoing pending requests |
+| `sideout_friend_request(text)` | Send by public player code, with duplicate-safe retries and request limits |
+| `sideout_friend_respond(uuid,boolean)` | Recipient accepts or declines a pending request |
+| `sideout_friend_cancel(uuid)` | Requester cancels a pending request |
+| `sideout_friend_remove(uuid)` | Either participant removes an accepted friendship |
+
+Every mutation derives identity from `auth.uid()`, checks participant ownership, and takes the existing ordered player locks. A partial unique index prevents multiple active requests/friendships for an unordered player pair. Private table/helper access is revoked; RLS remains enabled; PUBLIC/anon cannot execute the gateways. Snapshots reuse the public player projection and never expose sign-in email, tokens, or another account's friend graph.
+
+New requests require completed avatars and are limited to 20/hour plus 20 outgoing pending. Declined, cancelled or removed pairs have a 24-hour cooldown in either direction. Requests never auto-accept a crossing request or change duos, matches, or MMR. Auth account deletion cascades friendship/request history; the operator deletion helper also reports their removal explicitly.
+
+The Friends migration and `tests/friends.sql` passed in isolated embedded PostgreSQL together with the existing migration/suite set. The suite covers authorization, privacy, transitions, retries, rate/cooldown limits, uniqueness, account deletion cascade, and unchanged game data. Multi-session concurrency was reviewed through lock order and unique constraints but was not load-tested. Production application and live verification are pending owner approval; no live friend requests or fixture accounts were created.

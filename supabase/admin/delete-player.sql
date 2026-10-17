@@ -31,7 +31,7 @@ begin
   -- Reads remain possible. A busy database fails closed at the caller's timeout.
   lock table auth.users,auth.refresh_tokens,auth.flow_state,sideout.players,sideout.profiles,sideout.duos,
     sideout.duo_members,sideout.invitations,sideout.matches,sideout.duo_links,
-    sideout.court_checkins in share row exclusive mode;
+    sideout.court_checkins,sideout.friendships in share row exclusive mode;
   perform u.id from auth.users u where u.id = p_user_id for update;
   if not found then raise exception 'Account UUID not found; nothing was deleted.' using errcode = 'P0002'; end if;
 
@@ -63,6 +63,9 @@ begin
   where l.owner_id = p_user_id or l.claimed_by = p_user_id or l.duo_id = any(v_duos);
   get diagnostics v_count = row_count;
   v_counts := v_counts || pg_catalog.jsonb_build_object('duoLinks',v_count);
+  delete from sideout.friendships f where f.requester_id = p_user_id or f.recipient_id = p_user_id;
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || pg_catalog.jsonb_build_object('friendships',v_count);
   delete from sideout.invitations i where i.from_id = p_user_id or i.to_id = p_user_id;
   get diagnostics v_count = row_count;
   v_counts := v_counts || pg_catalog.jsonb_build_object('invitations',v_count);
@@ -107,6 +110,7 @@ begin
     or exists(select 1 from auth.sessions s where s.user_id = p_user_id)
     or exists(select 1 from auth.refresh_tokens t where t.user_id = p_user_id::text)
     or exists(select 1 from auth.flow_state f where f.user_id = p_user_id or f.linking_target_id = p_user_id)
+    or exists(select 1 from sideout.friendships f where f.requester_id = p_user_id or f.recipient_id = p_user_id)
     or exists(select 1 from sideout.players p where p.user_id = p_user_id)
     or exists(select 1 from sideout.profiles p where p.user_id = p_user_id) then
     raise exception 'Live account cleanup incomplete; roll back.';

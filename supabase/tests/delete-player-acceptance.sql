@@ -24,7 +24,7 @@ declare
   target_flow uuid := pg_catalog.gen_random_uuid(); target_link_flow uuid := pg_catalog.gen_random_uuid(); other_flow uuid := pg_catalog.gen_random_uuid();
   target_code text; target_email text; result jsonb; rejected boolean;
   marker text := 'Delete ' || pg_catalog.substr(pg_catalog.replace(target::text,'-',''),1,16);
-  before_auth jsonb; before_players jsonb; before_profiles jsonb; before_courts jsonb;
+  before_auth jsonb; before_players jsonb; before_profiles jsonb; before_courts jsonb; before_friendships jsonb;
   before_match jsonb; before_invite jsonb; before_link jsonb; before_duos jsonb; before_members jsonb;
   before_other_identity jsonb; before_other_session jsonb; before_other_tokens jsonb; identity_row uuid;
   before_other_flow jsonb;
@@ -82,6 +82,10 @@ begin
   insert into sideout.court_checkins(user_id,court_id,status,open_play,checked_in_at,updated_at,expires_at) values
     (target,'paddle-grove','practice',true,now_at,now_at,now_at+interval '2 hours'),
     (b,'the-bodega','playing',false,now_at,now_at,now_at+interval '2 hours');
+
+  insert into sideout.friendships(requester_id,recipient_id,status) values
+    (target,b,'accepted'),(c,target,'pending'),(target,d,'declined'),(e,g,'accepted');
+  select pg_catalog.to_jsonb(x) into before_friendships from sideout.friendships x where x.requester_id=e and x.recipient_id=g;
 
   -- All four participant slots, both duo sides, creator and reporter references.
   -- Stored snapshots include the target's nondefault avatar and name.
@@ -149,7 +153,7 @@ begin
 
   result := pg_temp.sideout_delete_player(target,'DELETE '||target::text);
   if result->'deleted'->>'authUsers' <> '1' or result->'deleted'->>'matches' <> '6'
-    or result->'deleted'->>'duos' <> '2' or result->'deleted'->>'duoLinks' <> '3'
+    or result->'deleted'->>'friendships' <> '3' or result->'deleted'->>'duos' <> '2' or result->'deleted'->>'duoLinks' <> '3'
     or result->'deleted'->>'refreshTokens' <> '2' or result->'deleted'->>'authFlows' <> '2' or result->'deleted'->>'courtCheckins' <> '1'
     or result->'otherPlayerAggregatesChanged' <> 'false'::jsonb then raise exception 'TEST: deletion counts or contract incorrect'; end if;
 
@@ -161,6 +165,7 @@ begin
     or exists(select 1 from sideout.profiles x where x.user_id=target or x.data->>'name'=marker)
     or exists(select 1 from sideout.players x where x.user_id=target or x.code=target_code)
     or exists(select 1 from sideout.court_checkins x where x.user_id=target)
+    or exists(select 1 from sideout.friendships x where x.requester_id=target or x.recipient_id=target)
     or exists(select 1 from sideout.invitations x where x.from_id=target or x.to_id=target)
     or exists(select 1 from sideout.duo_links x where x.owner_id=target or x.claimed_by=target or x.duo_id=any(array[target_duo,old_target_duo]))
     or exists(select 1 from sideout.duos x where x.player_a=target or x.player_b=target)
@@ -172,6 +177,7 @@ begin
   if before_auth is distinct from (select pg_catalog.jsonb_agg(pg_catalog.to_jsonb(x) order by x.id) from auth.users x where x.id=any(others))
     or before_players is distinct from (select pg_catalog.jsonb_agg(pg_catalog.to_jsonb(x) order by x.user_id) from sideout.players x where x.user_id=any(others))
     or before_profiles is distinct from (select pg_catalog.jsonb_agg(pg_catalog.to_jsonb(x) order by x.user_id) from sideout.profiles x where x.user_id=any(others))
+    or before_friendships is distinct from (select pg_catalog.to_jsonb(x) from sideout.friendships x where x.requester_id=e and x.recipient_id=g)
     or before_courts is distinct from (select pg_catalog.to_jsonb(x) from sideout.court_checkins x where x.user_id=b)
     or before_match is distinct from (select pg_catalog.to_jsonb(x) from sideout.matches x where x.id=unaffected_game)
     or before_invite is distinct from (select pg_catalog.to_jsonb(x) from sideout.invitations x where x.id=unaffected_invite)

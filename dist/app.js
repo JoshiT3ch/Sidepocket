@@ -47,6 +47,21 @@ let leaderboardController=null;
 let leaderboardStarting=null;
 let courtsController=null;
 let courtsStarting=null;
+let friendsController=null;
+let friendsStarting=null;
+async function startFriends(){
+  if(!state.avatarCreated)return;
+  if(friendsController)return friendsController.handleNavigation('friends');
+  if(friendsStarting)return friendsStarting;
+  friendsStarting=(async()=>{
+    try{const {initFriends}=await import('./friends.js');friendsController=initFriends({onNavigate:navigate});await friendsController.handleNavigation(document.querySelector('.page.active')?.id||'profile');}
+    catch(error){toast(error.message||'Could not open friends. Please try again.');}
+    finally{friendsStarting=null;}
+  })();
+  return friendsStarting;
+}
+window.addEventListener('pagehide',()=>{friendsController?.destroy();friendsController=null;});
+window.addEventListener('pageshow',event=>{if(event.persisted&&document.querySelector('.page.active')?.id==='friends')startFriends();});
 async function startCourts(){
   if(!state.avatarCreated)return;
   if(courtsController)return courtsController.handleNavigation('courts');
@@ -145,7 +160,7 @@ function render(){
   if(page==='rating')renderChanged('history',matchStats?.history||[],renderHistory);
   storyEditor?.refresh();
 }
-function navigate(page){if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard','courts'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});render();if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();if(courtsController)Promise.resolve(courtsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='courts')startCourts();}
+function navigate(page){if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard','courts','friends'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});render();if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();if(courtsController)Promise.resolve(courtsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='courts')startCourts();if(friendsController)Promise.resolve(friendsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='friends')startFriends();}
 let storyEditor=null,storyStarting=null;
 let chosenBody=state.avatarCreated?state.bodyType:null;
 const setupHeight=document.getElementById('setup-height');

@@ -108,12 +108,23 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   }catch(problem){error(problem.message);status('');}
   finally{joining=false;setBusy(false);render();}
  }
+ async function requestFriend(player){
+  if(busy||!player||isMine(player))return;
+  error('');status('Sending your friend request…');setBusy(true);
+  try{
+   if(refreshing)await refreshing;
+   const friends=await api('/api/friends/request',{playerCode:player.code});
+   status(friends.friends?.some(item=>item.player.code===player.code)?'You’re already friends. View your crew in Friends.':'Friend request sent. They can accept it in Friends.');if(document.querySelector('.page.active')?.id==='play')onNavigate('friends');
+  }catch(problem){error(problem.message||'Could not send your friend request. Try again.');status('');}
+  finally{setBusy(false);render();}
+ }
  function renderConnected(){
   const target=byId('connected-player');target.replaceChildren();target.hidden=!connected;
   if(!connected||!data)return;
   const player=connected.player;target.append(el('div','eyebrow','PLAYER FOUND'),person(player));
   if(isMine(player)){target.append(el('p','play-helper','This is your player QR. Scan another player to connect.'));return;}
   const actions=el('div','play-actions');
+  actions.append(mutableButton('Add friend ↗',()=>requestFriend(player),'button button-outline'));
   const alreadyPartner=data.duo?.players.some(partner=>partner.id===player.id);
   const invite=mutableButton('Invite as my duo ↗',()=>runAction('/api/duos',{playerCode:player.code},`Duo invite sent to ${player.name}. They can accept it in Connect & play.`),'button play-accent');
   if(data.duo||connected.duo){invite.disabled=true;invite.title=alreadyPartner?'This player is already your duo.':'Both players must be free to form a duo.';}

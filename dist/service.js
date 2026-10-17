@@ -22,6 +22,15 @@ function endpoint(path,options){
   if(path==='/api/profile'&&method==='PUT')return{rpc:'sideout_save_profile',args:{p_profile:body},save:true};
   if(path==='/api/play'&&method==='GET')return{rpc:'sideout_play',args:{}};
   if(path==='/api/leaderboard'&&method==='GET')return{rpc:'sideout_leaderboard',args:{}};
+  if(path==='/api/friends'&&method==='GET')return{rpc:'sideout_friends',args:{}};
+  if(path==='/api/friends/request'&&method==='POST')return{rpc:'sideout_friend_request',args:{p_code:body.playerCode}};
+  const friend=path.match(/^\/api\/friends\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(respond|cancel|remove)$/i);
+  if(friend&&method==='POST'){
+    const [,id,action]=friend;
+    if(action==='respond')return{rpc:'sideout_friend_respond',args:{p_id:id,p_accept:body.accept}};
+    if(action==='cancel')return{rpc:'sideout_friend_cancel',args:{p_id:id}};
+    if(action==='remove')return{rpc:'sideout_friend_remove',args:{p_id:id}};
+  }
   if(path==='/api/courts'&&method==='GET')return{rpc:'sideout_courts',args:{p_court_id:null}};
   if(path==='/api/courts/check-in'&&method==='POST')return{rpc:'sideout_court_check_in',args:{p_court_id:body.courtId,p_status:body.status,p_open_play:body.openPlay}};
   if(path==='/api/courts/leave'&&method==='POST')return{rpc:'sideout_court_leave',args:{p_court_id:body.courtId??null}};

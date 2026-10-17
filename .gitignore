@@ -13,3 +13,6 @@ Thumbs.db
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+
+# Supabase CLI local cache
+supabase/.temp/

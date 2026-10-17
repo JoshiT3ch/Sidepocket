@@ -58,6 +58,16 @@ The optional local SQLite mode retains its separate email/password forms and bac
 
 Male and female hairstyles have separate choices; both support six hair colors. The locker includes 40 clothing pieces across caps, shirts, shorts, and pants, with Nike and Adidas choices. Avatars and outfits are saved per account and appear on the profile and downloadable story card.
 
+## Friends
+
+Open **Friends** to add someone by their Sideout player code or player link. You can also find a player in **Play & QR** and choose **Add friend**. Only the invited player can accept or decline; the sender can cancel a pending request. Accepted friends appear on both accounts with their saved avatar, public player code, and current MMR. Either player can remove the friendship after an inline confirmation.
+
+Friendships are separate from duos, matches, and ratings. Adding a friend never forms a duo or starts a game. Each account reads only its own friends and incoming/outgoing requests; sign-in emails and private account information are not included. Friends refreshes every 20 seconds while visible, with a manual Refresh action.
+
+The backend allows up to 20 new requests per hour and 20 outstanding outgoing requests. Repeated sends of the same pending request or existing friendship do not create duplicates. Crossing requests require an explicit incoming acceptance. After a decline, cancellation, or removal, both players wait 24 hours before starting another request for that pair. Historical request records support these limits; account deletion removes relationships and request history involving that account.
+
+Cloud activation requires `supabase/migrations/20261017152442_sideout_friends.sql` before deploying the Friends interface. The local Node preview supports the same actions using its isolated SQLite accounts. Database and browser validations are described in `supabase/README.md`.
+
 ## QR codes and doubles
 
 Open **Play & QR** to show your stable player code and a QR that contains a full Sideout website URL. A normal phone camera can open it directly. Older saved QR images encoded custom player text; reopen the updated website and use its new QR. In Sideout, you can scan with the camera, choose a QR photo, or paste a player code or link. Images are decoded locally in the browser.

@@ -120,7 +120,7 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
    me:{rank:rows.find(row=>row.user_id===userId)?.rank??null,player:player(userId)},rankedPlayers:rows[0]?.total??0,limit:100};
  }
 
- return async function handlePlay(req,res,url){
+ const handlePlay=async function(req,res,url){
   const pathname=url.pathname;
   if(pathname!=='/api/leaderboard'&&!pathname.startsWith('/api/play')&&!pathname.startsWith('/api/players/')&&!pathname.startsWith('/api/duos')&&!pathname.startsWith('/api/matches')&&pathname!=='/api/courts'&&!pathname.startsWith('/api/courts/'))return false;
   const current=session(req);if(!current)fail(401,'Please log in to continue.');
@@ -259,4 +259,7 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
   }
   fail(404,'Not found.');
  };
+ // Server-side stores reuse the same safe player projection and code validation.
+ handlePlay.players={player,codePlayer,requireReady};
+ return handlePlay;
 }

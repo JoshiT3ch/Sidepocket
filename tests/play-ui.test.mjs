@@ -53,6 +53,33 @@ async function withPlay({href=origin+'/#play',ready=true,request,onDuoFormed,onO
  finally{for(const [key,descriptor]of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}}
 }
 
+test('Add friend sends a public code, blocks duplicate clicks and opens Friends after success',async()=>{
+ const saved=deferred();
+ await withPlay({request:path=>path.startsWith('/api/players/')?{player:partner,duo:null}:path==='/api/friends/request'?saved.promise:snapshot()},async({nodes,calls,routes,lookup})=>{
+  await lookup(partner.code);const add=nodes['connected-player'].querySelectorAll('button').find(button=>button.textContent==='Add friend ↗');assert.ok(add);
+  const first=add.click();await new Promise(resolve=>setImmediate(resolve));assert.equal(add.disabled,true);await add.click();assert.equal(calls.filter(call=>call.path==='/api/friends/request').length,1);
+  saved.resolve({friends:[],incoming:[],outgoing:[{id:'request-id',player:partner}]});await first;
+  assert.deepEqual(calls.find(call=>call.path==='/api/friends/request'),{path:'/api/friends/request',method:'POST',body:{playerCode:partner.code}});assert.deepEqual(routes,['friends']);assert.match(nodes['play-status'].textContent,/Friend request sent/);
+ });
+});
+
+test('Add friend recognizes an existing friendship and keeps server failures actionable without navigating',async()=>{
+ let fail=true;
+ await withPlay({request:path=>{if(path.startsWith('/api/players/'))return{player:partner,duo:null};if(path==='/api/friends/request'){if(fail)throw new Error('Too many friend requests. Try again later.');return{friends:[{id:'friendship-id',player:partner}],incoming:[],outgoing:[]};}return snapshot();}},async({nodes,routes,lookup})=>{
+  await lookup(partner.code);const add=()=>nodes['connected-player'].querySelectorAll('button').find(button=>button.textContent==='Add friend ↗');await add().click();assert.match(nodes['play-error'].textContent,/Too many friend requests/);assert.deepEqual(routes,[]);assert.equal(add().disabled,false);
+  fail=false;await add().click();assert.match(nodes['play-status'].textContent,/already friends/);assert.deepEqual(routes,['friends']);
+ });
+});
+
+test('a delayed Add friend response keeps the page the player navigated to',async()=>{
+ const saved=deferred();
+ await withPlay({request:path=>path.startsWith('/api/players/')?{player:partner,duo:null}:path==='/api/friends/request'?saved.promise:snapshot()},async({nodes,routes,lookup,setPage,controller})=>{
+  await lookup(partner.code);const save=nodes['connected-player'].querySelectorAll('button').find(button=>button.textContent==='Add friend ↗').click();await new Promise(resolve=>setImmediate(resolve));
+  setPage('locker');await controller.handleNavigation('locker');saved.resolve({friends:[],incoming:[],outgoing:[{id:'request-id',player:partner}]});await save;
+  assert.deepEqual(routes,[]);assert.match(nodes['play-status'].textContent,/Friend request sent/);
+ });
+});
+
 test('duo intent waits for avatar completion, then pairs once and removes the consumed invite URL',()=>withPlay({href:`${origin}/?duo=${token}&player=${partner.code}#avatar`,ready:false,request:path=>path==='/api/duos/join'?paired():snapshot()},async({controller,calls,nodes,location,setReady,formations})=>{
  assert.deepEqual(calls,[]);await controller.handleNavigation('play');assert.deepEqual(calls,[]);
  assert.equal(new URL(location.href).searchParams.get('duo'),token);
