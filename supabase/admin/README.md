@@ -6,7 +6,7 @@
 
 The procedure removes the selected account's live Supabase Auth user, identities and sessions through managed Auth cascades, and explicitly removes refresh tokens including legacy tokens without a session, plus pending Auth flow states for that user or links targeting that user. It removes the player's profile/avatar, player code and aggregate stats, current court check-in, invitations, duo links, memberships, and both current and historical duos involving that player. It deletes affected match records entirely, including JSON player/character/rating snapshots and rating-delta references.
 
-**Shared match history is removed for the other participants too. Their existing aggregate MMR, games, and wins remain unchanged.** Other accounts, profile/avatar data, unrelated duos/links/invitations, check-ins, and unrelated matches are preserved. Do not describe deletion as recalculating everyone else's ratings or retaining an anonymized match archive.
+**Shared match history is removed for the other participants too. Their existing aggregate MMR, games, and wins remain unchanged.** Other accounts, profile/avatar data, unrelated duos/links/invitations, check-ins, friendships, and unrelated matches are preserved. Do not describe deletion as recalculating everyone else's ratings or retaining an anonymized match archive.
 
 The account's old JWT may remain cryptographically valid until its normal expiry. Sideout's gateways still deny it because `sideout.me()` requires its subject to exist in `auth.users`; it cannot lazily recreate the profile. New deliberate sign-up later is a separate account creation and is not prevented by this procedure.
 
@@ -43,3 +43,5 @@ Passing JavaScript tests does not execute this SQL fixture. Record the actual SQ
 7. Verify in a fresh operator query that the target is absent from live Auth and Sideout records, and confirm the actual outcome to the requester. Explain any separately retained provider backups/logs or externally shared copies accurately instead of claiming they were erased.
 
 The helper uses a 5-second lock timeout and a 30-second statement timeout in its wrapper. It briefly blocks writes to the participating application tables while collecting and removing references; normal reads remain possible. Keep the transaction short and avoid external work while it holds locks.
+
+The Friends migrations add `sideout.friendships` and `sideout.friend_presence`. The operator helper removes accepted friendships and request history involving the target account, reports the `friendships` count, removes the account's saved sharing preferences/status/court with a `friendPresence` count, and preserves other players' relationships and sharing records. The same records also cascade when their Auth account is deleted. The rollback fixture checks target deletion and exact preservation of another account's sharing record.

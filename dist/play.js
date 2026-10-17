@@ -1,5 +1,5 @@
 import {drawAvatar} from './pixel-player.js';
-import {renderPlayerQr,renderDuoQr,decodePlayerQr,parsePlayerCode,playerLink,duoLink,parseDuoInvite} from './qr.js';
+import {renderPlayerQr,renderDuoQr,parsePlayerCode,playerLink,duoLink,parseDuoInvite} from './qr.js';
 
 const el=(tag,className='',content='')=>{const node=document.createElement(tag);if(className)node.className=className;if(content!==''&&content!=null)node.textContent=String(content);return node;};
 const signed=value=>`${Number(value)>=0?'+':''}${value}`;
@@ -7,13 +7,15 @@ const average=players=>Math.round(players.reduce((sum,player)=>sum+Number(player
 const sideName=players=>players.map(player=>player.name).join(' & ');
 const shortDate=value=>{const date=new Date(value);return Number.isFinite(date.getTime())?date.toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';};
 
-export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreated=()=>true,onDuoFormed=()=>{},onOpponentFound=()=>{}}={}){
+export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreated=()=>true,onDuoFormed=()=>{},onOpponentFound=()=>{},now=Date.now,loadQrDecoder=()=>import('./qr-decoder.js').then(module=>module.decodePlayerQr)}={}){
  const root=document.getElementById('play');
  if(!root)return{refresh:async()=>{},handleNavigation:async()=>{},closeScanner:()=>{}};
  const byId=id=>document.getElementById(id);
  const dialog=byId('player-scan-dialog'),video=byId('player-scan-video'),scanMessage=byId('scanner-message');
  let data=null,connected=null,busy=false,refreshing=null,stream=null,scanTimer=null,scanGeneration=0,lookingUp=false,deepLinkHandled=false;
  let duoInvite=null,showDuoQr=false,qrLink='',joining=false;
+ let lastReceived=null,statsSignature='',renderSignature='',connectedVersion=0,decoderPromise=null,decodeQr=null,poll=null;
+ const pollInterval=20000;
  const winnerChoices=new Map();
  const scannerCanvas=document.createElement('canvas');
  const status=message=>{byId('play-status').textContent=message||'';};
@@ -35,18 +37,32 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   try{drawAvatar(canvas.getContext('2d'),52,133,1.25,{...(player.avatar||{}),name:player.name});}catch{canvas.setAttribute('aria-label',player.name);}
   return row;
  };
- const applyData=async next=>{
+ const readConnected=()=>{
+  if(!connected)return null;
+  const code=connected.player.code,version=connectedVersion;
+  // Read both players in parallel, but keep opponent latency off the stats display.
+  return{code,version,promise:api(`/api/players/${encodeURIComponent(code)}`).then(value=>({value}),()=>({value:null}))};
+ };
+ const applyConnected=async read=>{
+  if(!read)return;
+  const {value}=await read.promise;
+  // An explicit scan may have selected a different player while this read ran.
+  if(read.version!==connectedVersion||connected?.player.code!==read.code)return;
+  connected=value;render();
+ };
+ const applyData=async(next,connectedRead)=>{
   const hadSnapshot=data!==null,previousDuoId=data?.duo?.id;
-  data=next;
-  if(connected){try{connected=await api(`/api/players/${encodeURIComponent(connected.player.code)}`);}catch{connected=null;}}
-  await onStats({rating:next.player.rating,games:next.player.games,wins:next.player.wins,history:next.history||[]});
+  data=next;lastReceived=now();
+  const stats={rating:next.player.rating,games:next.player.games,wins:next.player.wins,history:next.history||[]},signature=JSON.stringify(stats);
+  if(signature!==statsSignature){statsSignature=signature;await onStats(stats);}
   render();
   if(hadSnapshot&&next.duo?.id&&next.duo.id!==previousDuoId){
    // A visual effect must never turn a successful pairing into an action error.
-   try{onDuoFormed(next.player,next.duo);}catch{}
+   try{Promise.resolve(onDuoFormed(next.player,next.duo)).catch(()=>{});}catch{}
   }
+  await applyConnected(connectedRead===undefined?readConnected():connectedRead);
  };
- const setBusy=value=>{busy=value;root.querySelectorAll('button').forEach(button=>button.disabled=value);root.setAttribute('aria-busy',String(value));};
+ const setBusy=value=>{busy=value;renderSignature='';root.querySelectorAll('button').forEach(button=>button.disabled=value);root.setAttribute('aria-busy',String(value));};
  const runAction=async(path,body,message)=>{
   if(busy)return;
   error('');status('Saving your game…');setBusy(true);
@@ -57,7 +73,7 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   byId('play-identity-player').replaceChildren(person(data.player));
   byId('player-code').textContent=data.player.code;
   if(data.duo){duoInvite=null;showDuoQr=false;}
-  const invite=showDuoQr&&duoInvite&&new Date(duoInvite.expiresAt).getTime()>Date.now();
+  const invite=showDuoQr&&duoInvite&&new Date(duoInvite.expiresAt).getTime()>now();
   qrLink=invite?duoLink(duoInvite.token):playerLink(data.player.code);
   if(invite)renderDuoQr(byId('player-qr'),duoInvite.token);else renderPlayerQr(byId('player-qr'),data.player.code);
   byId('player-qr').setAttribute('aria-label',invite?'Duo invitation QR. Scan to open Sideout and join this player.':'Player QR. Scan to open this player on the Sideout website.');
@@ -92,12 +108,23 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   }catch(problem){error(problem.message);status('');}
   finally{joining=false;setBusy(false);render();}
  }
+ async function requestFriend(player){
+  if(busy||!player||isMine(player))return;
+  error('');status('Sending your friend request…');setBusy(true);
+  try{
+   if(refreshing)await refreshing;
+   const friends=await api('/api/friends/request',{playerCode:player.code});
+   status(friends.friends?.some(item=>item.player.code===player.code)?'You’re already friends. View your crew in Friends.':'Friend request sent. They can accept it in Friends.');if(document.querySelector('.page.active')?.id==='play')onNavigate('friends');
+  }catch(problem){error(problem.message||'Could not send your friend request. Try again.');status('');}
+  finally{setBusy(false);render();}
+ }
  function renderConnected(){
   const target=byId('connected-player');target.replaceChildren();target.hidden=!connected;
   if(!connected||!data)return;
   const player=connected.player;target.append(el('div','eyebrow','PLAYER FOUND'),person(player));
   if(isMine(player)){target.append(el('p','play-helper','This is your player QR. Scan another player to connect.'));return;}
   const actions=el('div','play-actions');
+  actions.append(mutableButton('Add friend ↗',()=>requestFriend(player),'button button-outline'));
   const alreadyPartner=data.duo?.players.some(partner=>partner.id===player.id);
   const invite=mutableButton('Invite as my duo ↗',()=>runAction('/api/duos',{playerCode:player.code},`Duo invite sent to ${player.name}. They can accept it in Connect & play.`),'button play-accent');
   if(data.duo||connected.duo){invite.disabled=true;invite.title=alreadyPartner?'This player is already your duo.':'Both players must be free to form a duo.';}
@@ -168,28 +195,36 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   if(!matches.length)target.append(el('p','play-empty','Your next game starts with a scan. Form a duo, then challenge another duo here.'));
   else matches.slice(0,24).forEach(match=>target.append(renderMatch(match)));
  }
- function render(){if(!data)return;renderIdentity();renderConnected();renderDuo();renderMatches();}
- async function refresh({quiet=false}={}){
+ function render(){
+  if(!data)return;
+  if(data.duo){duoInvite=null;showDuoQr=false;}
+  const signature=JSON.stringify([data,connected,duoInvite,showDuoQr,busy,duoInvite?new Date(duoInvite.expiresAt).getTime()>now():false]);
+  if(signature===renderSignature)return;
+  renderSignature=signature;renderIdentity();renderConnected();renderDuo();renderMatches();
+ }
+ async function refresh({quiet=false,maxAge=0}={}){
   if(!getAvatarCreated()||busy&&data)return;
   if(refreshing)return refreshing;
+  if(maxAge>0&&lastReceived!==null&&now()-lastReceived<maxAge)return;
   if(!quiet){error('');status('Checking your court connections…');}
   byId('refresh-play').disabled=true;
-  refreshing=(async()=>{try{await applyData(await api('/api/play'));if(!quiet)status('Connections up to date.');}catch(problem){if(!quiet){error(problem.message);status('');}}finally{refreshing=null;byId('refresh-play').disabled=busy;}})();
+  const connectedRead=readConnected();
+  refreshing=(async()=>{try{await applyData(await api('/api/play'),connectedRead);if(!quiet)status('Connections up to date.');}catch(problem){if(!quiet){error(problem.message);status('');}}finally{refreshing=null;byId('refresh-play').disabled=busy;}})();
   return refreshing;
  }
  async function lookup(input){
   if(lookingUp||busy)return;
   const code=parsePlayerCode(input);if(!code){error('Use a player code or a Sideout player QR link.');return;}
-  error('');status('Finding your player…');lookingUp=true;byId('find-player').disabled=true;
+  error('');status('Finding your player…');lookingUp=true;++connectedVersion;byId('find-player').disabled=true;
   try{
    if(!data)await refresh();if(!data)throw new Error('Your player could not load. Refresh your connections and try again.');
-   connected=await api(`/api/players/${encodeURIComponent(code)}`);renderConnected();status(isMine(connected.player)?'That QR belongs to you.':`${connected.player.name} found. Choose teammate or opponent.`);
+   connected=await api(`/api/players/${encodeURIComponent(code)}`);render();status(isMine(connected.player)?'That QR belongs to you.':`${connected.player.name} found. Choose teammate or opponent.`);
    if(opposingDuoFound()){
     // Only an explicit lookup shows the matchup; refreshes keep the normal challenge flow.
     try{Promise.resolve(onOpponentFound(data.player,data.duo,connected.duo)).catch(()=>{});}catch{}
    }
   }
-  catch(problem){connected=null;renderConnected();error(problem.message);status('');}
+  catch(problem){connected=null;render();error(problem.message);status('');}
   finally{lookingUp=false;byId('find-player').disabled=busy;}
  }
  async function handleDeepLink(){
@@ -207,17 +242,21 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
  }
  function stopCamera(){scanGeneration++;if(scanTimer)clearTimeout(scanTimer);scanTimer=null;if(stream)stream.getTracks().forEach(track=>track.stop());stream=null;video.srcObject=null;}
  function closeScanner(){stopCamera();if(dialog.open)dialog.close();}
+ function getQrDecoder(){
+  if(!decoderPromise)decoderPromise=Promise.resolve().then(loadQrDecoder).catch(problem=>{decoderPromise=null;throw problem;});
+  return decoderPromise;
+ }
  async function foundCode(text){const token=parseDuoInvite(text);if(token){closeScanner();onNavigate('play');await joinDuo(token);return true;}const code=parsePlayerCode(text);if(!code){scanError('This QR is not a Sideout player or duo invite link. Try their Sideout QR.');return false;}closeScanner();byId('connect-player-code').value=code;onNavigate('play');await lookup(code);return true;}
  async function scanFrame(generation){
   if(generation!==scanGeneration||!dialog.open)return;
-  try{if(video.readyState>=2&&video.videoWidth){const ratio=Math.min(1,640/video.videoWidth);scannerCanvas.width=Math.round(video.videoWidth*ratio);scannerCanvas.height=Math.round(video.videoHeight*ratio);const ctx=scannerCanvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(video,0,0,scannerCanvas.width,scannerCanvas.height);const result=decodePlayerQr(ctx.getImageData(0,0,scannerCanvas.width,scannerCanvas.height));if(result&&await foundCode(result))return;}}
+  try{if(video.readyState>=2&&video.videoWidth){const ratio=Math.min(1,640/video.videoWidth);scannerCanvas.width=Math.round(video.videoWidth*ratio);scannerCanvas.height=Math.round(video.videoHeight*ratio);const ctx=scannerCanvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(video,0,0,scannerCanvas.width,scannerCanvas.height);const result=decodeQr(ctx.getImageData(0,0,scannerCanvas.width,scannerCanvas.height));if(result&&await foundCode(result))return;}}
   catch{scanMessage.textContent='Keep the QR centered, or choose a QR photo below.';}
   if(generation===scanGeneration&&dialog.open)scanTimer=setTimeout(()=>scanFrame(generation),200);
  }
  async function openScanner(){
   if(busy)return;scanError('');byId('scan-help').textContent='Point your camera at the other player’s QR code.';scanMessage.textContent='Starting your camera…';byId('scan-file').value='';dialog.showModal();const generation=++scanGeneration;
   if(!navigator.mediaDevices?.getUserMedia){scanMessage.textContent='Camera scanning needs a secure website. Choose a QR photo or paste their player code.';return;}
-  try{const camera=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}},audio:false});if(generation!==scanGeneration||!dialog.open){camera.getTracks().forEach(track=>track.stop());return;}stream=camera;video.srcObject=camera;await video.play();if(generation!==scanGeneration||!dialog.open)return;scanMessage.textContent='Hold their player QR inside the frame.';scanFrame(generation);}
+  try{const camera=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}},audio:false});if(generation!==scanGeneration||!dialog.open){camera.getTracks().forEach(track=>track.stop());return;}stream=camera;video.srcObject=camera;const [,decoder]=await Promise.all([video.play(),getQrDecoder()]);if(generation!==scanGeneration||!dialog.open)return;decodeQr=decoder;scanMessage.textContent='Hold their player QR inside the frame.';scanFrame(generation);}
   catch(problem){if(generation!==scanGeneration||!dialog.open)return;stopCamera();scanMessage.textContent=problem.name==='NotAllowedError'?'Camera access was not allowed. Choose a QR photo or paste their player code.':'Your camera could not open. Choose a QR photo or paste their player code.';}
  }
  function openPhoto(){if(busy)return;stopCamera();scanError('');byId('scan-help').textContent='Choose a photo of the other player’s QR code.';scanMessage.textContent='Choose a clear QR photo using the button below.';byId('scan-file').value='';dialog.showModal();}
@@ -225,23 +264,33 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   if(!file)return;scanError('');scanMessage.textContent='Reading your QR photo…';stopCamera();const generation=scanGeneration;
   if(file.size>12*1024*1024){scanError('Choose a QR photo smaller than 12 MB.');return;}
   let image;
-  try{image=await createImageBitmap(file);if(generation!==scanGeneration||!dialog.open)return;const ratio=Math.min(1,1200/Math.max(image.width,image.height));scannerCanvas.width=Math.max(1,Math.round(image.width*ratio));scannerCanvas.height=Math.max(1,Math.round(image.height*ratio));const ctx=scannerCanvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0,scannerCanvas.width,scannerCanvas.height);const text=decodePlayerQr(ctx.getImageData(0,0,scannerCanvas.width,scannerCanvas.height));if(!text||!await foundCode(text)){if(generation!==scanGeneration||!dialog.open)return;scanError(text?'This QR is not a Sideout player code.':'No player QR found. Try a clear photo with the whole QR visible.');scanMessage.textContent='Choose another QR photo, or paste their player code.';}}
+  try{const decoder=await getQrDecoder();if(generation!==scanGeneration||!dialog.open)return;image=await createImageBitmap(file);if(generation!==scanGeneration||!dialog.open)return;const ratio=Math.min(1,1200/Math.max(image.width,image.height));scannerCanvas.width=Math.max(1,Math.round(image.width*ratio));scannerCanvas.height=Math.max(1,Math.round(image.height*ratio));const ctx=scannerCanvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0,scannerCanvas.width,scannerCanvas.height);const text=decoder(ctx.getImageData(0,0,scannerCanvas.width,scannerCanvas.height));if(!text||!await foundCode(text)){if(generation!==scanGeneration||!dialog.open)return;scanError(text?'This QR is not a Sideout player code.':'No player QR found. Try a clear photo with the whole QR visible.');scanMessage.textContent='Choose another QR photo, or paste their player code.';}}
   catch{if(generation!==scanGeneration||!dialog.open)return;scanError('This photo could not be read. Try another image or paste their player code.');scanMessage.textContent='Choose another QR photo, or paste their player code.';}
   finally{image?.close();}
  }
  byId('connect-player-form').addEventListener('submit',event=>{event.preventDefault();const input=byId('connect-player-code').value,token=parseDuoInvite(input);if(token)joinDuo(token);else lookup(input);});
  byId('refresh-play').addEventListener('click',async()=>{await refresh();if(new URL(window.location.href).searchParams.has('duo')){deepLinkHandled=false;await handleDeepLink();}});
  byId('create-duo-qr').addEventListener('click',createDuoQr);
- byId('show-player-qr').addEventListener('click',()=>{showDuoQr=false;renderIdentity();});
+ byId('show-player-qr').addEventListener('click',()=>{showDuoQr=false;render();});
  byId('copy-qr-link').addEventListener('click',async()=>{if(!qrLink)return;try{await navigator.clipboard.writeText(qrLink);status(parseDuoInvite(qrLink)?'Duo invite link copied. Send it to your teammate.':'Player link copied. It opens the Sideout website.');}catch{const input=byId('qr-link-output');input.hidden=false;input.focus();input.select();status('Select and copy the website link below your QR.');}});
  byId('copy-player-code').addEventListener('click',async()=>{if(!data)return;try{await navigator.clipboard.writeText(data.player.code);status('Player code copied. Share it with your court crew.');}catch{status(`Your player code is ${data.player.code}. Select and copy it above.`);}});
  byId('scan-player').addEventListener('click',openScanner);byId('use-player-photo').addEventListener('click',openPhoto);byId('scan-close').addEventListener('click',closeScanner);
  dialog.addEventListener('close',stopCamera);dialog.addEventListener('cancel',stopCamera);
  byId('scan-file').addEventListener('change',event=>scanFile(event.target.files?.[0]));
- window.addEventListener('pagehide',closeScanner);
- const poll=setInterval(()=>{const page=document.querySelector('.page.active')?.id;if(['profile','rating','play'].includes(page)&&getAvatarCreated()&&!document.hidden&&!busy&&!lookingUp&&!dialog.open)refresh({quiet:true});},20000);
- window.addEventListener('pagehide',()=>clearInterval(poll),{once:true});
- async function handleNavigation(page){if(page!=='play'){closeScanner();if(['profile','rating'].includes(page))await refresh({quiet:Boolean(data)});return;}await refresh({quiet:Boolean(data)});await handleDeepLink();}
+ const activePage=()=>document.querySelector('.page.active')?.id;
+ const visible=()=>['profile','rating','play'].includes(activePage())&&getAvatarCreated()&&!document.hidden;
+ const stopPolling=()=>{if(poll!==null){clearInterval(poll);poll=null;}};
+ const startPolling=()=>{if(visible()&&poll===null)poll=setInterval(()=>{if(visible()&&!busy&&!lookingUp&&!dialog.open)refresh({quiet:true});},pollInterval);};
+ window.addEventListener('pagehide',()=>{closeScanner();stopPolling();});
+ window.addEventListener('pageshow',event=>{if(event.persisted){startPolling();if(visible())refresh({quiet:true,maxAge:pollInterval});}});
+ document.addEventListener('visibilitychange',()=>{stopPolling();if(document.hidden)closeScanner();else{startPolling();if(visible())refresh({quiet:true,maxAge:pollInterval});}});
+ async function handleNavigation(page){
+  if(page!=='play')closeScanner();
+  if(!['profile','rating','play'].includes(page)){stopPolling();return;}
+  startPolling();await refresh({quiet:Boolean(data),maxAge:pollInterval});
+  if(page==='play')await handleDeepLink();
+ }
+ startPolling();
  await refresh();await handleDeepLink();
  return{refresh,handleNavigation,closeScanner};
 }

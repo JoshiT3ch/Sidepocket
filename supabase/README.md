@@ -98,3 +98,33 @@ The gateways derive identity from authentication, require a completed avatar for
 ## Existing local data
 
 The optional Node/SQLite backend remains available for local development. Its `.data/sideout.sqlite` is excluded from source and static hosting. This release does not transfer local accounts, password hashes, avatars, or ratings into Supabase. Players from the local prototype create new cloud accounts; retain the local database if its data is needed later.
+
+## Friends
+
+Apply `migrations/20261017152442_sideout_friends.sql` after the existing migrations and before releasing the Friends UI. It adds private `sideout.friendships`, whose request history retains abuse-prevention timestamps, plus these authenticated gateways:
+
+| Function | Purpose |
+| --- | --- |
+| `sideout_friends()` | Read the caller's accepted friends and incoming/outgoing pending requests |
+| `sideout_friend_request(text)` | Send by public player code, with duplicate-safe retries and request limits |
+| `sideout_friend_respond(uuid,boolean)` | Recipient accepts or declines a pending request |
+| `sideout_friend_cancel(uuid)` | Requester cancels a pending request |
+| `sideout_friend_remove(uuid)` | Either participant removes an accepted friendship |
+
+Every mutation derives identity from `auth.uid()`, checks participant ownership, and takes the existing ordered player locks. A partial unique index prevents multiple active requests/friendships for an unordered player pair. Private table/helper access is revoked; RLS remains enabled; PUBLIC/anon cannot execute the gateways. Snapshots reuse the public player projection and never expose sign-in email, tokens, or another account's friend graph.
+
+New requests require completed avatars and are limited to 20/hour plus 20 outgoing pending. Declined, cancelled or removed pairs have a 24-hour cooldown in either direction. Requests never auto-accept a crossing request or change duos, matches, or MMR. Auth account deletion cascades friendship/request history; the operator deletion helper also reports their removal explicitly.
+
+The Friends migration and `tests/friends.sql` passed in isolated embedded PostgreSQL together with the existing migration/suite set. The suite covers authorization, privacy, transitions, retries, rate/cooldown limits, uniqueness, account deletion cascade, and unchanged game data. Multi-session concurrency was reviewed through lock order and unique constraints but was not load-tested. Production application and live verification are pending owner approval; no live friend requests or fixture accounts were created.
+
+### Optional status and court sharing
+
+Apply `migrations/20261017153913_sideout_friend_presence.sql` after Friends. Private `sideout.friend_presence` stores one manual status/court selection and two separate opt-in flags per account; both flags default false. The new authenticated gateways are `sideout_presence_update(text,text,jsonb,jsonb)` and `sideout_presence_hide()`. JSON booleans are required. Sharing requires a completed avatar; hiding remains available to every signed-in account. Server-owned expiry is exactly two hours after an explicit sharing save, and reads never extend it.
+
+`sideout_friends()` adds the caller's `me.presence` settings, the small court choice list, and `serverTime`. Only accepted friend entries gain a `presence` field. That field is null when hidden/expired; otherwise it contains only the selected visible status, court ID/name, and expiry. The private projection rechecks the accepted relationship. Pending requests cannot read presence, and no last-seen or update time is exposed to friends. Expired own settings normalize sharing flags to false while retaining the saved private selections.
+
+Turning court sharing off atomically removes the caller's public court check-in. Hide turns both flags off, clears the court and expiry, and removes that public check-in under the same player lock used by court actions. Checking in again through Courts is an explicit public sharing action and remains visible to all signed-in players. Friends sharing has no GPS or automatic online tracking. Browser expiry removes cached shared details even if a refresh fails; a removed friendship loses access on subsequent API reads.
+
+All seven migrations and seven SQL suites, including `tests/presence.sql` and the extended operator deletion fixture, passed locally in PGlite PostgreSQL 18.6. Presence tests cover strict validation, identity and grants, independent toggles, accepted-only reads, hidden/expired projections, exact expiry, public roster cleanup, ownership, no read renewal, removal and account-deletion cascades, and unchanged game data. Every fixture transaction rolled back and left no synthetic users. This is local verification; live migration, rollback rehearsal and production publication still require owner approval.
+
+The JavaScript suite passes 214 tests. A two-account local browser check verified sharing Playing/Paddle Grove, seeing it from the accepted friend's account, hiding both details, and confirming removal of an existing public court check-in. Reload retained the hidden preferences. The 390px mobile view had no horizontal overflow and no console errors. Browser lifetime regressions cover offline restore clearing and reinitialization while an older import/request is pending.
