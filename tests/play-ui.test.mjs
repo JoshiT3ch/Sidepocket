@@ -13,10 +13,12 @@ class Element{
  setAttribute(name,value){this.attributes[name]=String(value);}
  addEventListener(name,callback){this.listeners[name]=callback;}
  querySelectorAll(selector){const descendants=this.children.flatMap(child=>[child,...(child.querySelectorAll?.(selector)||[])]);return descendants.filter(child=>selector==='button'&&child.tagName==='BUTTON');}
- getContext(){if(this.id!=='player-qr')throw new Error('Avatar rendering is verified separately.');return{fillStyle:'',fillRect(){}};}
+ getContext(_type,options){if(options?.willReadFrequently)return{drawImage(){},getImageData(){return{width:1,height:1,data:new Uint8ClampedArray(4)};}};if(this.id!=='player-qr')throw new Error('Avatar rendering is verified separately.');return{fillStyle:'',fillRect(){}};}
  click(){return this.disabled?undefined:this.listeners.click?.();}
  emit(name,event={}){return this.listeners[name]?.(event);}
  close(){this.open=false;this.listeners.close?.();}
+ showModal(){this.open=true;}
+ async play(){}
  focus(){}
  select(){}
 }
@@ -34,19 +36,20 @@ const snapshot=(duo=null)=>({player:mine,duo,invitations:[],matches:[],history:[
 const paired=()=>snapshot({id:'duo-1',players:[mine,partner]});
 function deferred(){let resolve;const promise=new Promise(done=>{resolve=done;});return{promise,resolve};}
 
-async function withPlay({href=origin+'/#play',ready=true,request,onDuoFormed,onOpponentFound}={},run){
- const globals=['document','window','location','navigator','setInterval','clearInterval'];
+async function withPlay({href=origin+'/#play',ready=true,request,onDuoFormed,onOpponentFound,loadQrDecoder,mediaDevices,createImageBitmap}={},run){
+ const globals=['document','window','location','navigator','setInterval','clearInterval','createImageBitmap'];
  const previous=new Map(globals.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
  const nodes=Object.fromEntries(ids.map(id=>{const node=new Element(buttonIds.has(id)?'button':id==='player-qr'?'canvas':'div');node.id=id;return[id,node];}));
  nodes.play.children.push(...Object.values(nodes).filter(node=>node!==nodes.play));
- const calls=[],routes=[],copies=[],formations=[],opponents=[],polls=[],page={id:'play'};let current=new URL(href),avatarReady=ready;
+ const calls=[],routes=[],copies=[],formations=[],opponents=[],polls=[],stats=[],page={id:'play'},documentListeners={},windowListeners={};let current=new URL(href),avatarReady=ready,time=1000;
  const location={get href(){return current.href;},get origin(){return current.origin;}};
- const document={hidden:false,getElementById:id=>nodes[id],createElement:tag=>new Element(tag),createTextNode:text=>({textContent:String(text)}),querySelector:selector=>selector==='.page.active'?page:null};
+ const document={hidden:false,getElementById:id=>nodes[id],createElement:tag=>new Element(tag),createTextNode:text=>({textContent:String(text)}),querySelector:selector=>selector==='.page.active'?page:null,addEventListener(name,callback){documentListeners[name]=callback;}};
  const service={async request(path,options={}){const body=options.body===undefined?undefined:JSON.parse(options.body);calls.push({path,body,method:options.method||'GET'});return request?request(path,body,calls):snapshot();}};
- const window={location,history:{replaceState(_state,_title,url){current=new URL(url,current);}},sideoutService:service,addEventListener(){}};
- for(const [key,value]of Object.entries({document,window,location,navigator:{clipboard:{async writeText(value){copies.push(value);}}},setInterval:(callback,delay)=>{polls.push({callback,delay});return polls.length;},clearInterval:()=>{}}))Object.defineProperty(globalThis,key,{value,configurable:true,writable:true});
- const context={nodes,calls,routes,copies,formations,opponents,polls,location,setReady(value){avatarReady=value;},setUrl(value){current=new URL(value,current);},async poll(){for(const {callback}of polls)callback();await new Promise(resolve=>setImmediate(resolve));},async lookup(input){nodes['connect-player-code'].value=input;nodes['connect-player-form'].emit('submit',{preventDefault(){}});await new Promise(resolve=>setImmediate(resolve));}};
- try{context.controller=await initPlay({getAvatarCreated:()=>avatarReady,onNavigate:route=>{routes.push(route);page.id=route;},onDuoFormed:(player,duo)=>{formations.push({player,duo});onDuoFormed?.(player,duo);},onOpponentFound:(player,duo,otherDuo)=>{opponents.push({player,duo,otherDuo});return onOpponentFound?.(player,duo,otherDuo);}});await run(context);}
+ const window={location,history:{replaceState(_state,_title,url){current=new URL(url,current);}},sideoutService:service,addEventListener(name,callback){windowListeners[name]=callback;}};
+ for(const [key,value]of Object.entries({document,window,location,navigator:{mediaDevices,clipboard:{async writeText(value){copies.push(value);}}},setInterval:(callback,delay)=>{polls.push({callback,delay,active:true});return polls.length;},clearInterval:id=>{polls[id-1].active=false;},createImageBitmap}))Object.defineProperty(globalThis,key,{value,configurable:true,writable:true});
+ const tick=()=>new Promise(resolve=>setImmediate(resolve));
+ const context={nodes,calls,routes,copies,formations,opponents,polls,stats,location,setReady(value){avatarReady=value;},setTime(value){time=value;},setPage(value){page.id=value;},setUrl(value){current=new URL(value,current);},async visibility(hidden){document.hidden=hidden;documentListeners.visibilitychange?.();await tick();},async windowEvent(name,event={}){windowListeners[name]?.(event);await tick();},async poll(){for(const {callback,active}of polls)if(active)callback();await tick();},async lookup(input){nodes['connect-player-code'].value=input;nodes['connect-player-form'].emit('submit',{preventDefault(){}});await tick();}};
+ try{context.controller=await initPlay({getAvatarCreated:()=>avatarReady,now:()=>time,loadQrDecoder,onStats:value=>stats.push(value),onNavigate:route=>{routes.push(route);page.id=route;},onDuoFormed:(player,duo)=>{formations.push({player,duo});return onDuoFormed?.(player,duo);},onOpponentFound:(player,duo,otherDuo)=>{opponents.push({player,duo,otherDuo});return onOpponentFound?.(player,duo,otherDuo);}});await run(context);}
  finally{for(const [key,descriptor]of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}}
 }
 
@@ -151,6 +154,14 @@ test('a failed visual effect cannot undo a successful QR claim or keep its consu
  assert.equal(calls.filter(call=>call.path==='/api/duos/join').length,1);
 }));
 
+test('a rejected lazy duo effect is contained after a successful claim',()=>withPlay({href:`${origin}/?duo=${token}#play`,request:path=>path==='/api/duos/join'?paired():snapshot(),async onDuoFormed(){throw new Error('Effect import unavailable.');}},async({nodes,formations,location})=>{
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(formations.length,1);
+ assert.equal(new URL(location.href).searchParams.has('duo'),false);
+ assert.equal(nodes['play-error'].hidden,true);
+ assert.match(nodes['my-duo'].textContent,/Court Friend/);
+}));
+
 test('an opponent player QR link previews all four players once while challenge consent stays explicit',()=>withPlay({href:`${origin}/?player=${opponent.code}#play`,request:path=>path.startsWith('/api/players/')?{player:opponent,duo:opposingDuo}:paired()},async({controller,nodes,opponents,poll,calls})=>{
  assert.deepEqual(opponents,[{player:mine,duo:paired().duo,otherDuo:opposingDuo}]);
  assert.equal(opponents[0].otherDuo.players[0].rating,1480);
@@ -213,5 +224,90 @@ test('a failing opponent visual leaves the found team and normal challenge actio
   const challenge=nodes['connected-player'].querySelectorAll('button').find(button=>button.textContent==='Challenge their duo ↗');
   assert.ok(challenge);assert.equal(challenge.disabled,false);
   assert.equal(calls.some(call=>call.method==='POST'),false);
+ });
+});
+
+test('startup and quick navigation reuse a current snapshot while explicit refresh fetches fresh data',()=>withPlay({},async({controller,calls,setTime})=>{
+ assert.equal(calls.length,1);
+ await controller.handleNavigation('profile');await controller.handleNavigation('rating');await controller.handleNavigation('play');
+ assert.equal(calls.length,1,'initial navigation must not repeat the initial player request');
+ await controller.refresh();assert.equal(calls.length,2,'manual refresh always asks the server');
+ setTime(22000);await controller.handleNavigation('play');assert.equal(calls.length,3,'returning after the poll interval refreshes stale ratings');
+}));
+
+test('unchanged refreshes retain play DOM and notify profile stats only when stats change',async()=>{
+ let current=snapshot();
+ await withPlay({request:()=>structuredClone(current)},async({controller,stats,nodes,poll})=>{
+  const identity=nodes['play-identity-player'].children[0],matches=nodes['play-matches'].children[0];
+  await controller.refresh();await poll();assert.equal(stats.length,1);
+  assert.equal(nodes['play-identity-player'].children[0],identity);assert.equal(nodes['play-matches'].children[0],matches);
+  current={...snapshot(),invitations:[{id:'new-invitation',from:partner}]};await controller.refresh();
+  assert.equal(stats.length,1,'invitations must not redraw unrelated profile and wardrobe controls');assert.match(nodes['duo-invitations'].textContent,/Court Friend/);
+  current={...current,player:{...mine,rating:1216,games:1,wins:1}};await controller.refresh();
+  assert.equal(stats.length,2);assert.equal(stats[1].rating,1216);assert.match(nodes['play-identity-player'].textContent,/1216 MMR/);
+ });
+});
+
+test('a slow opponent refresh does not delay displaying current own stats',async()=>{
+ const opponentRead=deferred();let reads=0,current=snapshot();
+ await withPlay({href:`${origin}/?player=${partner.code}#play`,request:path=>path.startsWith('/api/players/')?(++reads===1?{player:partner,duo:null}:opponentRead.promise):current},async({controller,stats,nodes})=>{
+  current={...snapshot(),player:{...mine,rating:1250}};const updating=controller.refresh();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(stats.at(-1).rating,1250);assert.match(nodes['play-identity-player'].textContent,/1250 MMR/);
+  opponentRead.resolve({player:{...partner,name:'Updated Friend'},duo:null});await updating;
+  assert.match(nodes['connected-player'].textContent,/Updated Friend/);
+ });
+});
+
+test('an older opponent refresh cannot overwrite a newer explicit player lookup',async()=>{
+ const oldRead=deferred();let reads=0;
+ await withPlay({href:`${origin}/?player=${partner.code}#play`,request:path=>path.endsWith(partner.code)?(++reads===1?{player:partner,duo:null}:oldRead.promise):path.endsWith(opponent.code)?{player:opponent,duo:opposingDuo}:paired()},async({controller,lookup,nodes})=>{
+  const refreshing=controller.refresh();await new Promise(resolve=>setImmediate(resolve));
+  await lookup(opponent.code);assert.match(nodes['connected-player'].textContent,/Other Captain/);
+  oldRead.resolve({player:{...partner,name:'Outdated Friend'},duo:null});await refreshing;
+  assert.match(nodes['connected-player'].textContent,/Other Captain/);assert.doesNotMatch(nodes['connected-player'].textContent,/Outdated Friend/);
+ });
+});
+
+test('polling pauses offscreen and resumes after visibility and back-forward cache restoration',()=>withPlay({},async({controller,calls,polls,visibility,windowEvent,setTime,setPage,poll})=>{
+ assert.equal(polls.filter(entry=>entry.active).length,1);
+ await visibility(true);assert.equal(polls.filter(entry=>entry.active).length,0);await poll();assert.equal(calls.length,1);
+ setTime(22000);await visibility(false);assert.equal(polls.filter(entry=>entry.active).length,1);assert.equal(calls.length,2);
+ await windowEvent('pagehide');assert.equal(polls.filter(entry=>entry.active).length,0);
+ setTime(43000);await windowEvent('pageshow',{persisted:true});assert.equal(polls.filter(entry=>entry.active).length,1);assert.equal(calls.length,3);
+ setPage('locker');await controller.handleNavigation('locker');assert.equal(polls.filter(entry=>entry.active).length,0);
+ await poll();assert.equal(calls.length,3);
+ setPage('profile');await controller.handleNavigation('profile');assert.equal(polls.filter(entry=>entry.active).length,1);assert.equal(calls.length,3);
+}));
+
+test('the photo QR decoder loads only when a photo is read and is reused for subsequent photos',async()=>{
+ let loads=0,decodes=0,closed=0;
+ await withPlay({loadQrDecoder:async()=>{loads++;return()=>{decodes++;return null;};},createImageBitmap:async()=>({width:100,height:100,close(){closed++;}})},async({nodes})=>{
+  assert.equal(loads,0);nodes['use-player-photo'].click();assert.equal(loads,0);
+  await nodes['scan-file'].emit('change',{target:{files:[{size:100}]}});assert.equal(loads,1);assert.equal(decodes,1);assert.equal(closed,1);
+  await nodes['scan-file'].emit('change',{target:{files:[{size:100}]}});assert.equal(loads,1);assert.equal(decodes,2);assert.equal(closed,2);
+  nodes['scan-close'].click();
+ });
+});
+
+test('leaving the scanner during decoder startup releases the camera without starting a scan',async()=>{
+ const decoder=deferred();let loads=0,stops=0,decodes=0;
+ await withPlay({loadQrDecoder:()=>{loads++;return decoder.promise;},mediaDevices:{async getUserMedia(){return{getTracks:()=>[{stop(){stops++;}}]};}}},async({nodes,controller})=>{
+  const opening=nodes['scan-player'].click();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(loads,1);assert.equal(nodes['player-scan-dialog'].open,true);
+  await controller.handleNavigation('profile');assert.equal(stops,1);assert.equal(nodes['player-scan-dialog'].open,false);
+  decoder.resolve(()=>{decodes++;return null;});await opening;
+  assert.equal(decodes,0);assert.equal(nodes['player-scan-video'].srcObject,null);
+ });
+});
+
+test('camera scanning loads the decoder once and closes the camera after finding a player',async()=>{
+ let loads=0,decodes=0,stops=0;
+ await withPlay({loadQrDecoder:async()=>{loads++;return()=>{decodes++;return partner.code;};},mediaDevices:{async getUserMedia(){return{getTracks:()=>[{stop(){stops++;}}]};}},request:path=>path.startsWith('/api/players/')?{player:partner,duo:null}:snapshot()},async({nodes,calls})=>{
+  Object.assign(nodes['player-scan-video'],{readyState:2,videoWidth:100,videoHeight:100});
+  await nodes['scan-player'].click();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(loads,1);assert.equal(decodes,1);assert.equal(stops,1);assert.equal(nodes['player-scan-dialog'].open,false);assert.equal(calls.filter(call=>call.path.endsWith(partner.code)).length,1);
+  await nodes['scan-player'].click();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(loads,1);assert.equal(decodes,2);assert.equal(stops,2);
  });
 });

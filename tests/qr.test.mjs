@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderPlayerQr, renderDuoQr, decodePlayerQr, parsePlayerCode, playerLink, duoLink, parseDuoInvite } from '../dist/qr.js';
+import { renderPlayerQr, renderDuoQr, parsePlayerCode, playerLink, duoLink, parseDuoInvite } from '../dist/qr.js';
+import {decodePlayerQr} from '../dist/qr-decoder.js';
 const website='https://sideout-valencia.dchiligan.chatgpt.site';
 const token='a2790e87-4509-4625-9dad-c3acc267c2f7';
 
