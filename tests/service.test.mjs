@@ -321,6 +321,35 @@ test('friends routes map only to authenticated friend gateways with explicit arg
   assert.equal(calls.length,before);
 });
 
+test('friend sharing transport forwards only choices and preserves strict validation inputs',async()=>{
+  const {service,calls}=fixture();
+  const forged={userId:'other',expiresAt:'2099-01-01',updatedAt:0,latitude:8,longitude:125};
+  await service.request('/api/friends/presence',post({...forged,status:'available',courtId:'paddle-grove',shareStatus:true,shareLocation:false}));
+  assert.deepEqual(calls.at(-1),['rpc','sideout_presence_update',{p_status:'available',p_court_id:'paddle-grove',p_share_status:true,p_share_location:false}]);
+  await service.request('/api/friends/presence',post({status:'invalid',courtId:null,shareStatus:'false',shareLocation:0}));
+  assert.deepEqual(calls.at(-1),['rpc','sideout_presence_update',{p_status:'invalid',p_court_id:null,p_share_status:'false',p_share_location:0}]);
+  await service.request('/api/friends/presence/hide',post(forged));
+  assert.deepEqual(calls.at(-1),['rpc','sideout_presence_hide',{}]);
+  const before=calls.length;
+  for(const [path,options] of [
+    ['/api/friends/presence',{}],['/api/friends/presence/hide',{}],
+    ['/api/friends/presence',{method:'PUT',body:'{}'}],
+    ['/api/friends/presence?user=other',post({})],['/api/friends/presence/hide/other',post({})]
+  ])await assert.rejects(service.request(path,options),{status:404});
+  assert.equal(calls.length,before);
+});
+
+test('local friend sharing uses the same origin-restricted endpoints',async()=>{
+  const calls=[];
+  const service=createService({provider:'local'},{fetchImpl:async(...input)=>{calls.push(input);return{ok:true,status:200,json:async()=>({friends:[]})};}});
+  for(const path of ['/api/friends/presence','/api/friends/presence/hide']){
+    await service.request(path,post({}));
+    assert.equal(calls.at(-1)[0],path);
+    assert.equal(calls.at(-1)[1].credentials,'same-origin');
+    assert.equal(calls.at(-1)[1].headers['X-Sideout-Request'],'1');
+  }
+});
+
 test('unsupported routes and methods never call arbitrary database functions',async()=>{
   const {service,calls}=fixture();
   for(const [path,options] of [

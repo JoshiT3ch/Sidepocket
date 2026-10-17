@@ -67,7 +67,7 @@ begin
   -- Incomplete accounts can see an empty graph, but cannot initiate requests.
   perform pg_catalog.set_config('request.jwt.claim.sub',unfinished::text,true);
   execute 'set local role authenticated';
-  if public.sideout_friends() <> '{"friends":[],"incoming":[],"outgoing":[]}'::jsonb then raise exception 'TEST: initial Friends snapshot is not empty'; end if;
+  if (public.sideout_friends() - array['me','courts','serverTime']) <> '{"friends":[],"incoming":[],"outgoing":[]}'::jsonb then raise exception 'TEST: initial Friends snapshot is not empty'; end if;
   rejected := false;
   begin perform public.sideout_friend_request(code_a); exception when raise_exception then rejected := true; end;
   if not rejected then raise exception 'TEST: unfinished sender created request'; end if;
@@ -90,7 +90,7 @@ begin
     first_result->'outgoing'->0->'player'->>'id' <> b::text or
     pg_catalog.jsonb_array_length(first_result->'incoming') <> 0 or
     pg_catalog.jsonb_array_length(first_result->'friends') <> 0 then raise exception 'TEST: sender snapshot mismatch'; end if;
-  if public.sideout_friend_request(code_b) <> first_result then raise exception 'TEST: duplicate send changed pending request'; end if;
+  if (public.sideout_friend_request(code_b) - 'serverTime') <> (first_result - 'serverTime') then raise exception 'TEST: duplicate send changed pending request'; end if;
   execute 'reset role';
   if (select pg_catalog.count(*) from sideout.friendships f where f.requester_id = a and f.recipient_id = b) <> 1 then raise exception 'TEST: duplicate history inserted'; end if;
   rejected := false;
@@ -110,7 +110,7 @@ begin
   begin perform public.sideout_friend_remove(first_id); exception when raise_exception then rejected := true; end;
   if not rejected then raise exception 'TEST: pending request removed as a friend'; end if;
   perform pg_catalog.set_config('request.jwt.claim.sub',c::text,true);
-  if public.sideout_friends() <> '{"friends":[],"incoming":[],"outgoing":[]}'::jsonb then raise exception 'TEST: third party can see a friendship'; end if;
+  if (public.sideout_friends() - array['me','courts','serverTime']) <> '{"friends":[],"incoming":[],"outgoing":[]}'::jsonb then raise exception 'TEST: third party can see a friendship'; end if;
   foreach statement in array array[
     pg_catalog.format('select public.sideout_friend_respond(%L,true)',first_id),
     pg_catalog.format('select public.sideout_friend_cancel(%L)',first_id),
@@ -139,19 +139,20 @@ begin
   if pg_catalog.jsonb_array_length(result->'friends') <> 1 or pg_catalog.jsonb_array_length(result->'incoming') <> 0 or
     result->'friends'->0->>'id' <> first_id::text or result->'friends'->0->'player'->>'id' <> a::text or
     result->'friends'->0->'createdAt' <> first_result->'outgoing'->0->'createdAt' then raise exception 'TEST: accepted friendship contract mismatch'; end if;
-  if public.sideout_friend_respond(first_id,true) <> result then raise exception 'TEST: accept retry changed friendship'; end if;
+  if (public.sideout_friend_respond(first_id,true) - 'serverTime') <> (result - 'serverTime') then raise exception 'TEST: accept retry changed friendship'; end if;
   rejected := false;
   begin perform public.sideout_friend_respond(first_id,false); exception when raise_exception then rejected := true; end;
   if not rejected then raise exception 'TEST: accepted request declined later'; end if;
   perform pg_catalog.set_config('request.jwt.claim.sub',a::text,true);
   result := public.sideout_friends();
   if result->'friends'->0->'player'->>'id' <> b::text or pg_catalog.jsonb_array_length(result->'outgoing') <> 0 then raise exception 'TEST: accepted friendship not symmetric'; end if;
-  if public.sideout_friend_request(code_b) <> result then raise exception 'TEST: already-friends send created request'; end if;
+  if (public.sideout_friend_request(code_b) - 'serverTime') <> (result - 'serverTime') then raise exception 'TEST: already-friends send created request'; end if;
   entry := result->'friends'->0;
-  if (select pg_catalog.count(*) from pg_catalog.jsonb_object_keys(result)) <> 3 or
-    not (result ?& array['friends','incoming','outgoing']) or
-    (select pg_catalog.count(*) from pg_catalog.jsonb_object_keys(entry)) <> 3 or
-    not (entry ?& array['id','player','createdAt']) or pg_catalog.jsonb_typeof(entry->'createdAt') <> 'number' or
+  if (select pg_catalog.count(*) from pg_catalog.jsonb_object_keys(result)) <> 6 or
+    not (result ?& array['friends','incoming','outgoing','me','courts','serverTime']) or
+    (select pg_catalog.count(*) from pg_catalog.jsonb_object_keys(entry)) <> 4 or
+    not (entry ?& array['id','player','createdAt','presence']) or entry->'presence' <> 'null'::jsonb or
+    pg_catalog.jsonb_typeof(entry->'createdAt') <> 'number' or
     (select pg_catalog.count(*) from pg_catalog.jsonb_object_keys(entry->'player')) <> 7 or
     not (entry->'player' ?& array['id','name','code','rating','games','wins','avatar']) or
     (entry->'player') ?| array['email','token','history','avatarCreated','raw_user_meta_data'] or
@@ -164,19 +165,21 @@ begin
   -- imposes a pair-wide cooldown in either direction, without deleting history.
   perform pg_catalog.set_config('request.jwt.claim.sub',b::text,true);
   result := public.sideout_friend_remove(first_id);
-  if result <> '{"friends":[],"incoming":[],"outgoing":[]}'::jsonb or public.sideout_friend_remove(first_id) <> result then raise exception 'TEST: remove or remove retry failed'; end if;
+  if (result - array['me','courts','serverTime']) <> '{"friends":[],"incoming":[],"outgoing":[]}'::jsonb or
+    (public.sideout_friend_remove(first_id) - 'serverTime') <> (result - 'serverTime') then raise exception 'TEST: remove or remove retry failed'; end if;
   rejected := false;
   begin perform public.sideout_friend_request(code_a); exception when raise_exception then rejected := true; end;
   if not rejected then raise exception 'TEST: reverse remove cooldown bypassed'; end if;
   perform pg_catalog.set_config('request.jwt.claim.sub',a::text,true);
-  if public.sideout_friends() <> result then raise exception 'TEST: removal not symmetric'; end if;
+  if (public.sideout_friends() - array['me','courts','serverTime']) <> (result - array['me','courts','serverTime']) then raise exception 'TEST: removal not symmetric'; end if;
   rejected := false;
   begin perform public.sideout_friend_request(code_b); exception when raise_exception then rejected := true; end;
   if not rejected then raise exception 'TEST: remove cooldown bypassed'; end if;
   result := public.sideout_friend_request(code_c); old_id := (result->'outgoing'->0->>'id')::uuid;
   perform pg_catalog.set_config('request.jwt.claim.sub',c::text,true);
   result := public.sideout_friend_respond(old_id,false);
-  if result <> '{"friends":[],"incoming":[],"outgoing":[]}'::jsonb or public.sideout_friend_respond(old_id,false) <> result then raise exception 'TEST: decline or decline retry failed'; end if;
+  if (result - array['me','courts','serverTime']) <> '{"friends":[],"incoming":[],"outgoing":[]}'::jsonb or
+    (public.sideout_friend_respond(old_id,false) - 'serverTime') <> (result - 'serverTime') then raise exception 'TEST: decline or decline retry failed'; end if;
   perform pg_catalog.set_config('request.jwt.claim.sub',a::text,true);
   rejected := false;
   begin perform public.sideout_friend_request(code_c); exception when raise_exception then rejected := true; end;
@@ -187,7 +190,8 @@ begin
   result := public.sideout_friend_request(code_c); request_id := (result->'outgoing'->0->>'id')::uuid;
   if request_id = old_id then raise exception 'TEST: re-request rewrote history row'; end if;
   result := public.sideout_friend_cancel(request_id);
-  if result <> '{"friends":[],"incoming":[],"outgoing":[]}'::jsonb or public.sideout_friend_cancel(request_id) <> result then raise exception 'TEST: cancel or cancel retry failed'; end if;
+  if (result - array['me','courts','serverTime']) <> '{"friends":[],"incoming":[],"outgoing":[]}'::jsonb or
+    (public.sideout_friend_cancel(request_id) - 'serverTime') <> (result - 'serverTime') then raise exception 'TEST: cancel or cancel retry failed'; end if;
   perform pg_catalog.set_config('request.jwt.claim.sub',c::text,true);
   rejected := false;
   begin perform public.sideout_friend_request(code_a); exception when raise_exception then rejected := true; end;

@@ -51,7 +51,7 @@ function fakePage(){
  const body=new Element('body');
  const node=id=>{if(!nodes.has(id)){const item=new Element(id.includes('avatar')||id==='story-canvas'?'canvas':'div');item.id=id;nodes.set(id,item);body.append(item);}return nodes.get(id);};
  Object.assign(doc,{body,getElementById:node,createElement:tag=>new Element(tag),querySelector:selector=>selector==='.rating-track span'?node('rating-track-span'):select(body,selector)[0]||null,querySelectorAll:selector=>select(body,selector),addEventListener:(type,fn)=>documentEvents.set(type,fn)});
- const pageIds=['avatar','profile','locker','rating','play','leaderboard','courts'];
+ const pageIds=['avatar','profile','locker','rating','play','leaderboard','courts','friends'];
  for(const id of pageIds){const page=node(id);page.className='page'+(id==='profile'?' active':'');const nav=new Element('button');nav.className='nav-button';nav.dataset.page=id;body.append(nav);}
  for(const scope of ['setup','locker']){
   for(const type of ['male','female']){const button=new Element('button');button.dataset.character=type;node(scope+'-character-options').append(button);}
@@ -89,6 +89,29 @@ async function appPage({avatarCreated=true}={}){
  const source=(await readFile(new URL('../dist/app.js',import.meta.url),'utf8')).replace(/import\(('\.\/[^']+')\)/g,'window.testImport($1)');
  await vm.runInNewContext(source,page.context);return page;
 }
+
+test('Friends restore starts a new controller while an earlier request is pending',async()=>{
+ const page=await appPage();let creates=0,destroys=0,finishFirst;
+ page.modules['./friends.js']={initFriends:()=>{const own=++creates;return{handleNavigation:()=>own===1?new Promise(resolve=>{finishFirst=resolve;}):Promise.resolve(),destroy(){destroys++;}};}};
+ await page.navigate('friends');await Promise.resolve();await Promise.resolve();
+ assert.equal(creates,1);
+ for(const fn of page.windowEvents.get('pagehide')||[])await fn();
+ for(const fn of page.windowEvents.get('pageshow')||[])await fn({persisted:true});
+ await Promise.resolve();await Promise.resolve();assert.equal(creates,2);assert.equal(destroys,1);
+ finishFirst();await Promise.resolve();await page.navigate('profile');await page.navigate('friends');
+ assert.equal(creates,2,'late completion cannot replace the restored controller');
+});
+
+test('Friends import that completes after pagehide cannot initialize a stale controller',async()=>{
+ const page=await appPage();let creates=0,finishImport;
+ page.modules['./friends.js']=new Promise(resolve=>{finishImport=resolve;});
+ await page.navigate('friends');
+ for(const fn of page.windowEvents.get('pagehide')||[])await fn();
+ finishImport({initFriends:()=>{creates++;return{handleNavigation:async()=>{},destroy(){}};}});
+ await Promise.resolve();await Promise.resolve();assert.equal(creates,0);
+ for(const fn of page.windowEvents.get('pageshow')||[])await fn({persisted:true});
+ await Promise.resolve();await Promise.resolve();assert.equal(creates,1);
+});
 
 test('profile startup draws one visible avatar and defers locker, setup, story and effects work',async()=>{
  const page=await appPage();

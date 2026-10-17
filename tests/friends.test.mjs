@@ -26,6 +26,7 @@ test('private, consensual friend requests do not change rated play',{timeout:600
  }
  const post=(actor,route,data={})=>request(route,{method:'POST',cookie:actor.cookie,data});
  const view=async actor=>(await request('/api/friends',{cookie:actor.cookie})).json;
+ const graph=({friends,incoming,outgoing})=>({friends,incoming,outgoing});
  const empty={friends:[],incoming:[],outgoing:[]};
  const actors=[];
  for(let i=0;i<7;i++){
@@ -38,7 +39,9 @@ test('private, consensual friend requests do not change rated play',{timeout:600
  await t.test('access, origin, ready avatar and inputs are enforced',async()=>{
   assert.equal((await request('/api/friends')).status,401);
   assert.equal((await request('/api/friends/request',{method:'POST',data:{playerCode:b.code}})).status,401);
-  assert.deepEqual(await view(unready),empty);
+  const initial=await view(unready);assert.deepEqual(graph(initial),empty);
+  assert.deepEqual(initial.me.presence,{status:'available',courtId:null,shareStatus:false,shareLocation:false,updatedAt:null,expiresAt:null});
+  assert.ok(initial.courts.length>0);assert.ok(initial.courts.every(court=>Object.keys(court).sort().join(',')==='id,name'));
   assert.equal((await post(unready,'/api/friends/request',{playerCode:b.code})).status,409);
   assert.equal((await post(a,'/api/friends/request',{playerCode:a.code})).status,400);
   for(const playerCode of [null,7,'invalid','SO-FFFFFFFFFFFF'])assert.equal((await post(a,'/api/friends/request',{playerCode})).status,playerCode==='SO-FFFFFFFFFFFF'?404:400);
@@ -51,8 +54,8 @@ test('private, consensual friend requests do not change rated play',{timeout:600
   const sent=await post(a,'/api/friends/request',{playerCode:' '+b.code.toLowerCase()+' '});assert.equal(sent.status,201);ab=sent.json.outgoing[0].id;
   assert.equal(sent.json.outgoing.length,1);assert.equal(sent.json.outgoing[0].player.id,b.id);assert.ok(sent.json.outgoing[0].createdAt<=Date.now());
   const incoming=await view(b);assert.equal(incoming.incoming[0].id,ab);assert.equal(incoming.incoming[0].player.id,a.id);
-  assert.deepEqual(await view(c),empty);
-  const retry=await post(a,'/api/friends/request',{playerCode:b.code});assert.equal(retry.status,200);assert.deepEqual(retry.json,sent.json);
+  assert.deepEqual(graph(await view(c)),empty);
+  const retry=await post(a,'/api/friends/request',{playerCode:b.code});assert.equal(retry.status,200);assert.deepEqual(graph(retry.json),graph(sent.json));
   const crossed=await post(b,'/api/friends/request',{playerCode:a.code});assert.equal(crossed.status,409);assert.match(crossed.json.error,/incoming requests/);
   assert.equal(write(db=>db.prepare("SELECT COUNT(*) AS total FROM play_friendships WHERE status='pending'").get()).total,1);
   const serial=JSON.stringify(incoming);for(const field of ['email','password_hash','salt','history','token_hash'])assert.equal(serial.includes('"'+field+'"'),false);
@@ -72,11 +75,77 @@ test('private, consensual friend requests do not change rated play',{timeout:600
   assert.equal((await post(b,`/api/friends/${ab}/respond`,{accept:false})).status,409);
   assert.equal((await post(a,'/api/friends/request',{playerCode:b.code})).status,200);
   assert.equal((await request('/api/play',{cookie:a.cookie})).json.duo,null);
-  assert.deepEqual(await view(c),empty);
+  assert.deepEqual(graph(await view(c)),empty);
+ });
+ await t.test('optional status and manually chosen courts are visible only to accepted friends',async()=>{
+  const initial=await view(a),court=initial.courts[0];
+  assert.equal(initial.friends[0].presence,null);
+  const sharing={status:'playing',courtId:court.id,shareStatus:true,shareLocation:true};
+  const saved=await post(a,'/api/friends/presence',sharing);assert.equal(saved.status,200);
+  const own=saved.json.me.presence;
+  assert.equal(own.expiresAt-own.updatedAt,2*60*60*1000);assert.equal(own.shareStatus,true);assert.equal(own.shareLocation,true);
+  const shown=(await view(b)).friends.find(entry=>entry.player.id===a.id).presence;
+  assert.deepEqual(shown,{status:'playing',court:{id:court.id,name:court.name},expiresAt:own.expiresAt});
+  assert.deepEqual(Object.keys(shown).sort(),['court','expiresAt','status']);
+  assert.deepEqual(graph(await view(c)),empty);
+  const pending=await post(d,'/api/friends/request',{playerCode:a.code});assert.equal(pending.status,201);
+  const outgoing=pending.json.outgoing.find(entry=>entry.player.id===a.id);
+  assert.equal(Object.hasOwn(outgoing,'presence'),false);
+  assert.equal(Object.hasOwn((await view(a)).incoming.find(entry=>entry.player.id===d.id),'presence'),false);
+  assert.equal((await post(d,`/api/friends/${outgoing.id}/cancel`)).status,200);
+  for(let i=0;i<2;i++)assert.equal((await view(a)).me.presence.expiresAt,own.expiresAt);
+  assert.equal(write(db=>db.prepare('SELECT expires_at FROM friend_presence WHERE user_id=?').get(a.id)).expires_at,own.expiresAt);
+  assert.equal((await post(a,'/api/friends/presence',{...sharing,shareStatus:false})).status,200);
+  assert.equal((await view(b)).friends[0].presence.status,null);
+  assert.deepEqual((await view(b)).friends[0].presence.court,{id:court.id,name:court.name});
+  assert.equal((await post(a,'/api/friends/presence',{...sharing,shareLocation:false})).status,200);
+  assert.equal((await view(b)).friends[0].presence.status,'playing');assert.equal((await view(b)).friends[0].presence.court,null);
+ });
+ await t.test('presence validation is strict and expiry hides both fields without read renewal',async()=>{
+  const court=(await view(a)).courts[0],sharing={status:'available',courtId:court.id,shareStatus:true,shareLocation:true};
+  assert.equal((await request('/api/friends/presence',{method:'POST',data:sharing})).status,401);
+  assert.equal((await post(unready,'/api/friends/presence',sharing)).status,409);
+  for(const value of ['true',1,null,undefined]){
+   assert.equal((await post(a,'/api/friends/presence',{...sharing,shareStatus:value})).status,400);
+   assert.equal((await post(a,'/api/friends/presence',{...sharing,shareLocation:value})).status,400);
+  }
+  for(const status of ['idle','online',null,1])assert.equal((await post(a,'/api/friends/presence',{...sharing,status})).status,400);
+  for(const courtId of ['arbitrary-address',7,undefined])assert.equal((await post(a,'/api/friends/presence',{...sharing,courtId})).status,404);
+  assert.equal((await post(a,'/api/friends/presence',{...sharing,courtId:null})).status,400);
+  assert.equal((await request('/api/friends/presence',{method:'POST',cookie:a.cookie,foreignOrigin:'https://foreign.invalid',data:sharing})).status,403);
+  assert.equal((await post(a,'/api/friends/presence',{...sharing,status:'away'})).status,200);
+  write(db=>db.prepare('UPDATE friend_presence SET updated_at=updated_at-7200001,expires_at=expires_at-7200001 WHERE user_id=?').run(a.id));
+  const expired=await view(a);assert.equal(expired.me.presence.status,'away');assert.equal(expired.me.presence.courtId,court.id);
+  assert.equal(expired.me.presence.shareStatus,false);assert.equal(expired.me.presence.shareLocation,false);assert.equal(expired.me.presence.expiresAt,null);
+  assert.equal((await view(b)).friends[0].presence,null);
+  assert.equal((await post(unready,'/api/friends/presence/hide')).status,200);
+ });
+ await t.test('hiding whereabouts also clears public check-ins in the same transaction',async()=>{
+  const court=(await view(a)).courts[0],sharing={status:'practice',courtId:court.id,shareStatus:true,shareLocation:true};
+  assert.equal((await post(a,'/api/friends/presence',sharing)).status,200);
+  assert.equal((await post(a,'/api/courts/check-in',{courtId:court.id,status:'playing',openPlay:true})).status,200);
+  assert.equal((await request(`/api/courts/${court.id}`,{cookie:c.cookie})).json.players.some(entry=>entry.player.id===a.id),true);
+  const before=(await view(a)).me.presence;
+  write(db=>db.exec("CREATE TRIGGER block_presence_hide BEFORE DELETE ON court_checkins BEGIN SELECT RAISE(ABORT,'test rollback'); END;"));
+  assert.equal((await post(a,'/api/friends/presence',{...sharing,shareLocation:false})).status,500);
+  assert.deepEqual((await view(a)).me.presence,before);
+  assert.equal((await post(a,'/api/friends/presence/hide')).status,500);
+  assert.deepEqual((await view(a)).me.presence,before);
+  write(db=>db.exec('DROP TRIGGER block_presence_hide'));
+  assert.equal((await post(a,'/api/friends/presence',{...sharing,shareLocation:false})).status,200);
+  assert.equal((await request(`/api/courts/${court.id}`,{cookie:c.cookie})).json.players.some(entry=>entry.player.id===a.id),false);
+  assert.equal((await view(b)).friends[0].presence.status,'practice');assert.equal((await view(b)).friends[0].presence.court,null);
+  // A subsequent explicit public check-in is a fresh opt-in; quick hide clears it too.
+  assert.equal((await post(a,'/api/courts/check-in',{courtId:court.id,status:'playing',openPlay:false})).status,200);
+  const hidden=await post(a,'/api/friends/presence/hide');assert.equal(hidden.status,200);
+  assert.equal(hidden.json.me.presence.status,'practice');assert.equal(hidden.json.me.presence.courtId,null);
+  assert.equal(hidden.json.me.presence.shareStatus,false);assert.equal(hidden.json.me.presence.shareLocation,false);assert.equal(hidden.json.me.presence.expiresAt,null);
+  assert.equal((await view(b)).friends[0].presence,null);
+  assert.equal((await request(`/api/courts/${court.id}`,{cookie:c.cookie})).json.players.some(entry=>entry.player.id===a.id),false);
  });
  await t.test('either friend can remove; retries are safe and a new pair needs a 24-hour cooldown',async()=>{
   assert.equal((await post(b,`/api/friends/${ab}/remove`)).status,200);
-  assert.deepEqual(await view(a),empty);assert.deepEqual(await view(b),empty);
+  assert.deepEqual(graph(await view(a)),empty);assert.deepEqual(graph(await view(b)),empty);
   assert.equal((await post(a,`/api/friends/${ab}/remove`)).status,200);
   assert.equal((await post(a,'/api/friends/request',{playerCode:b.code})).status,429);
   assert.equal((await post(b,'/api/friends/request',{playerCode:a.code})).status,429);
@@ -89,13 +158,13 @@ test('private, consensual friend requests do not change rated play',{timeout:600
   assert.equal((await post(d,`/api/friends/${id}/respond`,{accept:false})).status,200);
   assert.equal((await post(d,`/api/friends/${id}/respond`,{accept:true})).status,409);
   assert.equal((await post(c,'/api/friends/request',{playerCode:d.code})).status,429);
-  assert.deepEqual(await view(c),empty);assert.deepEqual(await view(d),empty);
+  assert.deepEqual(graph(await view(c)),empty);assert.deepEqual(graph(await view(d)),empty);
   const cancelled=await post(e,'/api/friends/request',{playerCode:f.code}),cancelId=cancelled.json.outgoing[0].id;
   assert.equal((await post(e,`/api/friends/${cancelId}/cancel`)).status,200);
   assert.equal((await post(e,`/api/friends/${cancelId}/cancel`)).status,200);
   assert.equal((await post(f,`/api/friends/${cancelId}/respond`,{accept:true})).status,409);
   assert.equal((await post(e,'/api/friends/request',{playerCode:f.code})).status,429);
-  assert.deepEqual(await view(e),empty);assert.deepEqual(await view(f),empty);
+  assert.deepEqual(graph(await view(e)),empty);assert.deepEqual(graph(await view(f)),empty);
   const statuses=write(db=>db.prepare('SELECT status FROM play_friendships ORDER BY created_at,id').all()).map(row=>row.status);
   assert.ok(statuses.includes('removed'));assert.ok(statuses.includes('declined'));assert.ok(statuses.includes('cancelled'));
  });

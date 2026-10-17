@@ -49,18 +49,20 @@ let courtsController=null;
 let courtsStarting=null;
 let friendsController=null;
 let friendsStarting=null;
+let friendsVersion=0;
 async function startFriends(){
   if(!state.avatarCreated)return;
   if(friendsController)return friendsController.handleNavigation('friends');
   if(friendsStarting)return friendsStarting;
+  const version=friendsVersion;
   friendsStarting=(async()=>{
-    try{const {initFriends}=await import('./friends.js');friendsController=initFriends({onNavigate:navigate});await friendsController.handleNavigation(document.querySelector('.page.active')?.id||'profile');}
-    catch(error){toast(error.message||'Could not open friends. Please try again.');}
-    finally{friendsStarting=null;}
+    try{const {initFriends}=await import('./friends.js');if(version!==friendsVersion)return;friendsController=initFriends({onNavigate:navigate});await friendsController.handleNavigation(document.querySelector('.page.active')?.id||'profile');}
+    catch(error){if(version===friendsVersion)toast(error.message||'Could not open friends. Please try again.');}
+    finally{if(version===friendsVersion)friendsStarting=null;}
   })();
   return friendsStarting;
 }
-window.addEventListener('pagehide',()=>{friendsController?.destroy();friendsController=null;});
+window.addEventListener('pagehide',()=>{friendsVersion++;friendsController?.destroy();friendsController=null;friendsStarting=null;});
 window.addEventListener('pageshow',event=>{if(event.persisted&&document.querySelector('.page.active')?.id==='friends')startFriends();});
 async function startCourts(){
   if(!state.avatarCreated)return;

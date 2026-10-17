@@ -64,9 +64,13 @@ Open **Friends** to add someone by their Sideout player code or player link. You
 
 Friendships are separate from duos, matches, and ratings. Adding a friend never forms a duo or starts a game. Each account reads only its own friends and incoming/outgoing requests; sign-in emails and private account information are not included. Friends refreshes every 20 seconds while visible, with a manual Refresh action.
 
+In **Friends**, optionally share a status (**Available**, **Playing**, **Practicing**, or **Away**) and a manually selected court. Status and court sharing have separate controls and both start off. Only accepted friends receive the enabled details. Sharing expires two hours after an explicit save; reading or polling never renews it. Hidden and expired details include no last-seen timestamp. No GPS location is requested or tracked.
+
+Turning court sharing off also removes your existing public court check-in. **Hide status & whereabouts** turns off both sharing choices, clears the selected court, and removes the public check-in in the same transaction. Checking in again under **Courts** explicitly shares your court with all signed-in players, even if Friends sharing remains off. Removing a friend revokes future reads of your shared status/court. Details already received by another device cannot be recalled.
+
 The backend allows up to 20 new requests per hour and 20 outstanding outgoing requests. Repeated sends of the same pending request or existing friendship do not create duplicates. Crossing requests require an explicit incoming acceptance. After a decline, cancellation, or removal, both players wait 24 hours before starting another request for that pair. Historical request records support these limits; account deletion removes relationships and request history involving that account.
 
-Cloud activation requires `supabase/migrations/20261017152442_sideout_friends.sql` before deploying the Friends interface. The local Node preview supports the same actions using its isolated SQLite accounts. Database and browser validations are described in `supabase/README.md`.
+Cloud activation requires `supabase/migrations/20261017152442_sideout_friends.sql` followed by `supabase/migrations/20261017153913_sideout_friend_presence.sql` before deploying this Friends interface. The local Node preview supports the same actions using its isolated SQLite accounts. Database and browser validations are described in `supabase/README.md`.
 
 ## QR codes and doubles
 

@@ -24,6 +24,8 @@ function endpoint(path,options){
   if(path==='/api/leaderboard'&&method==='GET')return{rpc:'sideout_leaderboard',args:{}};
   if(path==='/api/friends'&&method==='GET')return{rpc:'sideout_friends',args:{}};
   if(path==='/api/friends/request'&&method==='POST')return{rpc:'sideout_friend_request',args:{p_code:body.playerCode}};
+  if(path==='/api/friends/presence'&&method==='POST')return{rpc:'sideout_presence_update',args:{p_status:body.status,p_court_id:body.courtId,p_share_status:body.shareStatus,p_share_location:body.shareLocation}};
+  if(path==='/api/friends/presence/hide'&&method==='POST')return{rpc:'sideout_presence_hide',args:{}};
   const friend=path.match(/^\/api\/friends\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(respond|cancel|remove)$/i);
   if(friend&&method==='POST'){
     const [,id,action]=friend;
