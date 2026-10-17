@@ -22,6 +22,16 @@ The browser uses a publishable key. This key is intentionally public; service-ro
 
 Google login does not require a purchased website domain or signup confirmation emails. The production Supabase Site URL is configured for Vercel, with redirects retained for the previous address while its QR links remain in use. A real Google sign-in from a player QR link was verified on the Vercel website, including loading the existing profile and duo. See `supabase/README.md` for the exact settings and production login checklist. Resend/custom SMTP is optional future work if email/password signup is restored. Password recovery is not implemented in this interface.
 
+## Install Sideout on your phone
+
+Open https://sideout-valenciacity.vercel.app and tap **Install Sideout** above the sign-in screen or clubhouse. In Chrome on Android, use the install prompt when available, or the browser menu's **Add to Home screen → Install**. On iPhone, open the website in Safari, tap **Share → Add to Home Screen**, enable **Open as Web App** when shown, and tap **Add**. Chrome and Edge on desktop can also install Sideout from their address bar or browser menu.
+
+The installable web app uses the existing Google accounts, avatars, duos, matches, and ratings. Installation is free. It opens in its own window with the Sideout home-screen icon. Some platforms keep browser and installed-app sign-in storage separate, so a player may need to sign in again after installation. The browser controls whether and when a native installation prompt appears; iPhone uses the Share menu instructions instead.
+
+Internet is required to sign in, load and save profiles, check in to courts, and record games. The service worker caches only a public offline screen, its styling/script, and its icon. It never caches account pages, OAuth callbacks, Supabase responses, or match results. A failed navigation displays that offline screen at the original URL, preserving a player or duo link for retry. New service worker versions take over after old app windows close, avoiding a forced reload during play. Increment the cache name in `dist/sw.js` when changing the offline screen assets.
+
+This installation retains browser-based image sharing. Direct Instagram Story integration requires a separate native implementation.
+
 ## Preview locally
 
 Use Node.js 24 or newer. From the website folder, run:

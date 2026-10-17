@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "Sideout — Valencia Pickleball",
+  "short_name": "Sideout",
+  "description": "Your local pickleball clubhouse. Your player, your duo, and your next good game.",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f4ed",
+  "theme_color": "#f5f4ed",
+  "prefer_related_applications": false,
+  "icons": [
+    {"src": "/icons/sideout-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/sideout-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/sideout-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
