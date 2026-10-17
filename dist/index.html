@@ -1,15 +1,25 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f5f4ed">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://pbfqudxyjklntneipjpq.supabase.co; base-uri 'none'; form-action 'self'">
   <meta name="description" content="Your pickleball identity. Customize a pixel player, explore your rating, and make a story card. Valencia City, Bukidnon.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" href="/icons/sideout-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Sideout">
+  <link rel="stylesheet" href="/pwa.css">
+  <script src="/pwa.js" defer></script>
   <title>Sideout — Your game. Your character.</title>
   <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="play.css"><link rel="stylesheet" href="courts.css"><link rel="stylesheet" href="duo-celebration.css"><link rel="stylesheet" href="matchup-preview.css"><script src="auth.js" defer></script><script src="app.js" defer></script>
 </head>
 <body class="auth-loading">
   <header class="topbar"><a href="#profile" class="brand" aria-label="Sideout home"><span class="brand-icon">s.</span>sideout<span class="brand-dot">®</span></a><span class="location"><span class="live-dot"></span> VALENCIA CITY, BUKIDNON</span><span class="prototype">VALENCIA CLUBHOUSE</span><button class="logout-button" id="logout" hidden>Log out ↗</button></header>
+  <section class="install-banner" id="install-banner" aria-label="Install Sideout"><div><strong>Your clubhouse. One tap away.</strong><span>Add Sideout to your home screen.</span></div><button id="install-sideout" type="button">Install Sideout ↗</button></section>
+  <p class="connection-status" id="connection-status" role="status" hidden>You’re offline. Reconnect before saving changes or recording a match.</p>
+  <dialog id="install-dialog" aria-labelledby="install-heading" aria-describedby="install-instructions"><div class="dialog-header"><div><img class="install-icon" src="/icons/sideout-192.png" width="64" height="64" alt=""><h2 id="install-heading">Your next game.<br>One tap away.</h2></div><button type="button" class="close-button" id="install-close" aria-label="Close install instructions">×</button></div><p>Add Sideout to your home screen for a window of its own and quick access to your clubhouse.</p><p id="install-instructions"></p><button class="button button-black" id="install-confirm" type="button" hidden>Install Sideout ↗</button><p id="install-status" role="status" aria-live="polite"></p><p class="helper">Free to install. Internet is needed for sign-in, profiles, and games.</p></dialog>
   <div class="auth-loader" id="auth-loader" role="status">Opening your clubhouse…</div>
   <section class="auth-view" id="auth-view" hidden aria-labelledby="auth-heading">
     <div class="auth-art"><div class="eyebrow">YOUR LOCAL PICKLEBALL CLUBHOUSE</div><h1>Your game.<br>Your crew.<br><em>Your character.</em></h1><div class="auth-character"><canvas id="auth-avatar" width="480" height="350" role="img" aria-label="Pixel pickleball player ready to join the community"></canvas><span class="auth-sticker">SEE YOU ON<br>THE COURT ↗</span></div><div class="auth-art-footer"><span>VALENCIA CITY, BUKIDNON</span><span>PLAY LOCAL. ↗</span></div></div>

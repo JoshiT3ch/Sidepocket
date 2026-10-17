@@ -100,7 +100,7 @@ const server=http.createServer(async(req,res)=>{
    if(!['GET','HEAD'].includes(req.method))throw new HttpError(405,'Method not allowed.');
    const pathname=decodeURIComponent(url.pathname);const relative=pathname==='/'?'index.html':pathname.replace(/^\/+/, '');const file=path.resolve(staticRoot,relative);
    if(!file.startsWith(staticRoot+path.sep))throw new HttpError(404,'Not found.');
-   const allowed={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml','.ico':'image/x-icon'};
+   const allowed={'.webmanifest':'application/manifest+json; charset=utf-8','.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml','.ico':'image/x-icon'};
    if(!allowed[path.extname(file)])throw new HttpError(404,'Not found.');
    let bytes;try{bytes=await fs.promises.readFile(file);}catch{throw new HttpError(404,'Not found.');}res.writeHead(200,{'Content-Type':allowed[path.extname(file)]});res.end(req.method==='HEAD'?undefined:bytes);
  }catch(error){if(res.headersSent){res.end();return;}if(!(error instanceof HttpError))console.error('Request failed:',error.code||error.name);send(res,error.status||500,{error:error.status?error.message:'Something went wrong. Please try again.'});}
