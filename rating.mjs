@@ -1,5 +1,7 @@
 export const MIN_WIN_AWARD=20;
 export const MAX_WIN_AWARD=40;
+export const EVEN_WIN_AWARD=30;
+export const MAX_AWARD_GAP=100;
 export const MIN_RATING=100;
 
 export function teamAverage(players){
@@ -11,8 +13,8 @@ export function teamAverage(players){
 
 export function winAward(winnerRating,opponentRating){
  if(!Number.isFinite(winnerRating)||!Number.isFinite(opponentRating))throw new TypeError('Ratings must be finite numbers.');
- const expected=1/(1+10**((opponentRating-winnerRating)/400));
- return MIN_WIN_AWARD+Math.round((MAX_WIN_AWARD-MIN_WIN_AWARD)*(1-expected));
+ const gap=Math.max(-MAX_AWARD_GAP,Math.min(MAX_AWARD_GAP,opponentRating-winnerRating));
+ return Math.round(EVEN_WIN_AWARD+gap*(MAX_WIN_AWARD-EVEN_WIN_AWARD)/MAX_AWARD_GAP);
 }
 
 export function ratingPreview(teams){

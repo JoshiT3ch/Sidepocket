@@ -123,7 +123,7 @@ begin
   execute 'reset role';
   test_count := test_count + 4;
 
-  -- Controlled fixture ratings exercise favorite +22 and underdog +38.
+  -- Controlled fixture ratings exercise the favorite +20 and underdog +40 caps.
   update sideout.players set rating = 1600 where user_id in(a,b);
   update sideout.players set rating = 1200 where user_id in(c,d);
   execute 'set local role authenticated';
@@ -155,7 +155,7 @@ begin
   result := public.sideout_match_create(code_c);
   select m.value into strict game_view from pg_catalog.jsonb_array_elements(result->'matches') m where m.value->>'status' = 'pending';
   game := (game_view->>'id')::uuid;
-  if game_view->'preview' <> '{"a":22,"b":38}'::jsonb then raise exception 'TEST: favorite/underdog preview mismatch'; end if;
+  if game_view->'preview' <> '{"a":20,"b":40}'::jsonb then raise exception 'TEST: favorite/underdog preview mismatch'; end if;
   if pg_catalog.jsonb_typeof(game_view->'createdAt') <> 'number' then raise exception 'TEST: timestamp not milliseconds number'; end if;
   rejected := false;
   begin perform public.sideout_match_result(game,'a'); exception when raise_exception then rejected := true; end;
@@ -186,7 +186,7 @@ begin
   foreach u in array array[a,b,c,d] loop
     perform pg_catalog.set_config('request.jwt.claim.sub',u::text,true);
     result := public.sideout_play();
-    if (result->'player'->>'rating')::bigint <> (case when u in(a,b) then 1622 else 1178 end) or
+    if (result->'player'->>'rating')::bigint <> (case when u in(a,b) then 1620 else 1180 end) or
        (result->'player'->>'games')::integer <> 1 or
        (result->'player'->>'wins')::integer <> (case when u in(a,b) then 1 else 0 end) or
        pg_catalog.jsonb_array_length(result->'history') <> 1 then raise exception 'TEST: four-player rating/stat update failed'; end if;
@@ -195,7 +195,7 @@ begin
   rejected := false;
   begin perform public.sideout_match_result(game,'b'); exception when raise_exception then rejected := true; end;
   if not rejected then raise exception 'TEST: completed match replayed'; end if;
-  if public.sideout_play()->'player'->'rating' <> '1178'::jsonb then raise exception 'TEST: replay changed rating'; end if;
+  if public.sideout_play()->'player'->'rating' <> '1180'::jsonb then raise exception 'TEST: replay changed rating'; end if;
   execute 'reset role';
   test_count := test_count + 10;
 
@@ -221,9 +221,9 @@ begin
   update sideout.players set rating = 1200 where user_id = d;
   execute 'set local role authenticated';
   result := public.sideout_match_result(game,'b');
-  if result->'player'->'rating' <> '1238'::jsonb then raise exception 'TEST: underdog winner did not gain 38'; end if;
+  if result->'player'->'rating' <> '1240'::jsonb then raise exception 'TEST: underdog winner did not gain 40'; end if;
   execute 'reset role';
-  if exists(select 1 from sideout.players p where (p.user_id in(a,b) and p.rating <> 1562) or (p.user_id in(c,d) and p.rating <> 1238)) then raise exception 'TEST: underdog deltas mismatch'; end if;
+  if exists(select 1 from sideout.players p where (p.user_id in(a,b) and p.rating <> 1560) or (p.user_id in(c,d) and p.rating <> 1240)) then raise exception 'TEST: underdog deltas mismatch'; end if;
   test_count := test_count + 4;
 
   -- Equal teams, high ratings above old demo ceiling, and minimum rating protection.
@@ -249,7 +249,7 @@ begin
   perform public.sideout_match_respond(game,true); perform public.sideout_match_result(game,'a');
   execute 'reset role';
   if exists(select 1 from sideout.players p where (p.user_id in(a,b) and p.rating <> 130) or (p.user_id in(c,d) and p.rating <> 100)) then raise exception 'TEST: rating floor mismatch'; end if;
-  if sideout.award(9007199254740900,100) <> 20 or sideout.award(100,9007199254740900) <> 40 then raise exception 'TEST: extreme-rating sigmoid overflow or bounds'; end if;
+  if sideout.award(9007199254740900,100) <> 20 or sideout.award(100,9007199254740900) <> 40 then raise exception 'TEST: extreme-rating award bounds'; end if;
   test_count := test_count + 4;
 
   -- Cancellation and expiry do not change ratings and free players to play again.

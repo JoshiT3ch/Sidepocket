@@ -142,6 +142,7 @@ function renderHistory(){
     const row=document.createElement('div');row.className='history-row';
     const label=document.createElement('div');const strong=document.createElement('strong');strong.className=win?'win-label':'loss-label';strong.textContent=(win?'Win':'Loss')+' · '+opponents.map(player=>player.name).join(' + ');
     const small=document.createElement('small');small.textContent='Doubles · '+new Date(item.completedAt).toLocaleDateString()+' · Opponent average '+Math.round(opponents.reduce((sum,player)=>sum+player.rating,0)/2)+' MMR';label.append(strong,small);
+    if(item.scores?.length){const scores=document.createElement('small');scores.className='history-set-scores';scores.textContent='Sets (your duo first): '+item.scores.map(score=>`${score[ownSide]}–${score[ownSide==='a'?'b':'a']}`).join(', ');label.append(scores);}
     const delta=document.createElement('span');delta.className='history-delta '+(result.delta>=0?'win-label':'loss-label');delta.textContent=(result.delta>=0?'+':'')+result.delta;
     const after=document.createElement('span');after.textContent=result.after+' MMR';row.append(label,delta,after);root.append(row);
   }

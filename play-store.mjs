@@ -1,5 +1,6 @@
 import {randomBytes,randomUUID} from 'node:crypto';
 import {ratingPreview,matchDeltas} from './rating.mjs';
+import {normalizeMatchFormat,validateMatchScores} from './dist/match-format.js';
 import {COURTS,COURT_STATUSES,COURT_TTL_MINUTES,COURT_ROSTER_LIMIT} from './dist/courts-data.js';
 
 const INVITATION_LIFETIME=24*60*60*1000;
@@ -31,8 +32,10 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
   player_a1 TEXT NOT NULL REFERENCES users(id),player_a2 TEXT NOT NULL REFERENCES users(id),
   player_b1 TEXT NOT NULL REFERENCES users(id),player_b2 TEXT NOT NULL REFERENCES users(id),
   teams TEXT NOT NULL,created_by TEXT NOT NULL REFERENCES users(id),created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,
-  reported_by TEXT REFERENCES users(id),completed_at INTEGER,winner_side TEXT CHECK(winner_side IN ('a','b')),deltas TEXT);
+  reported_by TEXT REFERENCES users(id),completed_at INTEGER,winner_side TEXT CHECK(winner_side IN ('a','b')),deltas TEXT,format TEXT,scores TEXT);
  CREATE INDEX IF NOT EXISTS play_matches_status ON play_matches(status,created_at);`);
+ const matchColumns=new Set(db.prepare('PRAGMA table_info(play_matches)').all().map(column=>column.name));
+ for(const column of ['format','scores'])if(!matchColumns.has(column))db.exec(`ALTER TABLE play_matches ADD COLUMN ${column} TEXT`);
  db.exec('CREATE INDEX IF NOT EXISTS play_players_leaderboard ON play_players(rating DESC,wins DESC,games ASC,code ASC) WHERE games>0');
  db.exec(`CREATE TABLE IF NOT EXISTS court_catalog(
   id TEXT PRIMARY KEY,name TEXT NOT NULL,address TEXT NOT NULL,maps_url TEXT NOT NULL,sort_order INTEGER NOT NULL UNIQUE);
@@ -83,7 +86,7 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
  function requireFree(ids){if(ids.some(id=>unfinished(id)))fail(409,'One of these players already has an unfinished game. Finish or cancel it first.');}
  function revokeDuoLinks(ids){for(const id of ids)db.prepare('UPDATE play_duo_links SET revoked_at=? WHERE owner_id=? AND claimed_by IS NULL AND revoked_at IS NULL').run(Date.now(),id);}
  function requireMatch(matchId,userId){const row=db.prepare('SELECT * FROM play_matches WHERE id=?').get(matchId);if(!row)fail(404,'Game not found.');if(!participantIds(row).includes(userId))fail(403,'Only players in this game can change it.');return row;}
- function matchView(row){const teams=JSON.parse(row.teams);return{id:row.id,status:row.status,teams,createdBy:row.created_by,createdAt:row.created_at,reportedBy:row.reported_by||null,completedAt:row.completed_at||null,winnerSide:row.winner_side||null,preview:ratingPreview(teams),deltas:row.deltas?JSON.parse(row.deltas):null};}
+ function matchView(row){const teams=JSON.parse(row.teams);return{id:row.id,status:row.status,teams,createdBy:row.created_by,createdAt:row.created_at,reportedBy:row.reported_by||null,completedAt:row.completed_at||null,winnerSide:row.winner_side||null,preview:ratingPreview(teams),deltas:row.deltas?JSON.parse(row.deltas):null,format:row.format?JSON.parse(row.format):null,scores:row.scores?JSON.parse(row.scores):null};}
  function playView(userId){
   expire();
   const matches=db.prepare('SELECT * FROM play_matches WHERE player_a1=? OR player_a2=? OR player_b1=? OR player_b2=? ORDER BY created_at DESC,id DESC LIMIT 20').all(userId,userId,userId,userId).map(matchView);
@@ -226,10 +229,12 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
   }
   if(pathname==='/api/matches'&&req.method==='POST'){
    const data=await body(req);const target=codePlayer(data.playerCode);
+   let format=null;
+   if(Object.hasOwn(data,'format'))try{format=normalizeMatchFormat(data.format);}catch(problem){fail(400,problem.message);}
    transaction(()=>{
     expire();const a=duoRow(current.id),b=duoRow(target.id);if(!a||!b)fail(409,'Both sides must form a duo before playing doubles.');if(a.id===b.id)fail(400,'Challenge a player from a different duo.');
     const ids=[a.player_a,a.player_b,b.player_a,b.player_b];if(new Set(ids).size!==4)fail(400,'A doubles game needs four different players.');ids.forEach(requireReady);requireFree(ids);
-    const now=Date.now();db.prepare('INSERT INTO play_matches(id,status,duo_a,duo_b,player_a1,player_a2,player_b1,player_b2,teams,created_by,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),'pending',a.id,b.id,...ids,JSON.stringify(teamsFor(a,b)),current.id,now,now+INVITATION_LIFETIME);
+    const now=Date.now();db.prepare('INSERT INTO play_matches(id,status,duo_a,duo_b,player_a1,player_a2,player_b1,player_b2,teams,created_by,created_at,expires_at,format) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),'pending',a.id,b.id,...ids,JSON.stringify(teamsFor(a,b)),current.id,now,now+INVITATION_LIFETIME,format?JSON.stringify(format):null);
    });return reply(201);
   }
   const matchRoute=/^\/api\/matches\/([^/]+)\/(respond|result|cancel)$/.exec(pathname);
@@ -247,14 +252,23 @@ export function createPlayStore({db,session,body,send,HttpError,storedProfile}){
     if(action==='cancel'){
      if(!['pending','active'].includes(row.status))fail(409,'This game is already finished.');db.prepare("UPDATE play_matches SET status='cancelled' WHERE id=?").run(matchId);return;
     }
-    if(!['a','b'].includes(data.winnerSide))fail(400,'Choose the duo that won.');if(row.status!=='active')fail(409,'Accept the game before submitting a result. Finished games cannot be submitted twice.');
-    const teams=JSON.parse(row.teams),deltas=matchDeltas(teams,data.winnerSide);
+    if(row.status!=='active')fail(409,'Accept the game before submitting a result. Finished games cannot be submitted twice.');
+    let winnerSide,scores=null;
+    if(row.format!==null){
+     try{winnerSide=validateMatchScores(JSON.parse(row.format),data.scores);}catch(problem){fail(400,problem.message);}
+     if(Object.hasOwn(data,'winnerSide')&&data.winnerSide!==winnerSide)fail(400,'The selected winner does not match the set scores.');
+     scores=data.scores.map(({a,b})=>({a,b}));
+    }else{
+     if(Object.hasOwn(data,'scores'))fail(400,'This earlier match records the winning duo without set scores.');
+     if(!['a','b'].includes(data.winnerSide))fail(400,'Choose the duo that won.');winnerSide=data.winnerSide;
+    }
+    const teams=JSON.parse(row.teams),deltas=matchDeltas(teams,winnerSide);
     for(const side of ['a','b'])for(const participant of teams[side]){
      const delta=deltas.find(item=>item.playerId===participant.id);
-     const update=db.prepare('UPDATE play_players SET rating=?,games=games+1,wins=wins+? WHERE user_id=? AND rating=?').run(delta.after,side===data.winnerSide?1:0,participant.id,delta.before);
+     const update=db.prepare('UPDATE play_players SET rating=?,games=games+1,wins=wins+? WHERE user_id=? AND rating=?').run(delta.after,side===winnerSide?1:0,participant.id,delta.before);
      if(update.changes!==1)fail(409,'A player rating changed. Cancel this game and create a new one.');
     }
-    db.prepare("UPDATE play_matches SET status='completed',reported_by=?,completed_at=?,winner_side=?,deltas=? WHERE id=?").run(current.id,Date.now(),data.winnerSide,JSON.stringify(deltas),matchId);
+    db.prepare("UPDATE play_matches SET status='completed',reported_by=?,completed_at=?,winner_side=?,deltas=?,scores=? WHERE id=?").run(current.id,Date.now(),winnerSide,JSON.stringify(deltas),scores?JSON.stringify(scores):null,matchId);
    });return reply();
   }
   fail(404,'Not found.');

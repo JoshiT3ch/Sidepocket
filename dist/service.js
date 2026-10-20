@@ -44,13 +44,13 @@ function endpoint(path,options){
   if(path==='/api/duos/link'&&method==='POST')return{rpc:'sideout_duo_link_create',args:{}};
   if(path==='/api/duos/join'&&method==='POST')return{rpc:'sideout_duo_link_join',args:{p_token:body.token}};
   if(path==='/api/duos/leave'&&method==='POST')return{rpc:'sideout_duo_leave',args:{}};
-  if(path==='/api/matches'&&method==='POST')return{rpc:'sideout_match_create',args:{p_code:body.playerCode}};
+  if(path==='/api/matches'&&method==='POST')return{rpc:'sideout_match_create',args:{p_code:body.playerCode,...(Object.hasOwn(body,'format')?{p_format:body.format}:{})}};
   const action=path.match(/^\/api\/(duos|matches)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(respond|result|cancel)$/i);
   if(action&&method==='POST'){
     const [,kind,id,verb]=action;
     if(kind==='duos'&&verb==='respond')return{rpc:'sideout_duo_respond',args:{p_id:id,p_accept:body.accept}};
     if(kind==='matches'&&verb==='respond')return{rpc:'sideout_match_respond',args:{p_id:id,p_accept:body.accept}};
-    if(kind==='matches'&&verb==='result')return{rpc:'sideout_match_result',args:{p_id:id,p_winner:body.winnerSide}};
+    if(kind==='matches'&&verb==='result')return{rpc:'sideout_match_result',args:Object.hasOwn(body,'scores')?{p_id:id,p_scores:body.scores,...(Object.hasOwn(body,'winnerSide')?{p_winner:body.winnerSide}:{})}:{p_id:id,p_winner:body.winnerSide}};
     if(kind==='matches'&&verb==='cancel')return{rpc:'sideout_match_cancel',args:{p_id:id}};
   }
   throw new ServiceError('This action is not available.',404);

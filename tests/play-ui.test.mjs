@@ -5,25 +5,37 @@ import {initPlay} from '../dist/play.js';
 // The actual controller runs against a small DOM/transport contract double.
 // QR raster decoding and the avatar canvas are covered separately.
 class Element{
- constructor(tag='div'){this.tagName=tag.toUpperCase();this.children=[];this.listeners={};this.attributes={};this.style={};this.hidden=false;this.disabled=false;this.value='';this.className='';this._text='';this.open=false;this.width=360;this.height=360;}
+ constructor(tag='div'){this.tagName=tag.toUpperCase();this.children=[];this.listeners={};this.attributes={};this.dataset={};this.style={};this.hidden=false;this.disabled=false;this.value='';this.className='';this._text='';this.open=false;this.width=360;this.height=360;this.parentNode=null;this.ownerDocument=null;this.modalOpens=0;}
  set textContent(value){this._text=String(value);this.children=[];}
  get textContent(){return this._text+this.children.map(child=>child.textContent||'').join('');}
- append(...children){this.children.push(...children);}
- replaceChildren(...children){this._text='';this.children=[...children];}
- setAttribute(name,value){this.attributes[name]=String(value);}
+ append(...children){for(const child of children){child.parentNode=this;child.ownerDocument=this.ownerDocument;this.children.push(child);}}
+ replaceChildren(...children){this._text='';this.children=[];this.append(...children);}
+ setAttribute(name,value){this.attributes[name]=String(value);if(name==='id')this.id=String(value);if(name==='class')this.className=String(value);if(name.startsWith('data-'))this.dataset[name.slice(5).replace(/-([a-z])/g,(_,letter)=>letter.toUpperCase())]=String(value);}
+ getAttribute(name){if(name==='id')return this.id??null;if(name==='class')return this.className;if(name.startsWith('data-'))return this.dataset[name.slice(5).replace(/-([a-z])/g,(_,letter)=>letter.toUpperCase())]??null;return this.attributes[name]??this[name]??null;}
+ removeAttribute(name){delete this.attributes[name];}
+ get valueAsNumber(){return this.value===''?NaN:Number(this.value);}
+ get classList(){return{add:(...names)=>{this.className=[...new Set([...this.className.split(/\s+/).filter(Boolean),...names])].join(' ');},remove:(...names)=>{this.className=this.className.split(/\s+/).filter(name=>!names.includes(name)).join(' ');},contains:name=>this.className.split(/\s+/).includes(name),toggle:(name,force)=>{const next=force??!this.className.split(/\s+/).includes(name);if(next)this.classList.add(name);else this.classList.remove(name);return next;}};}
  addEventListener(name,callback){this.listeners[name]=callback;}
- querySelectorAll(selector){const descendants=this.children.flatMap(child=>[child,...(child.querySelectorAll?.(selector)||[])]);return descendants.filter(child=>selector==='button'&&child.tagName==='BUTTON');}
+ matches(selector){return selector.split(',').some(part=>{part=part.trim();const tags=part.match(/^[a-z]+/i);if(tags&&this.tagName!==tags[0].toUpperCase())return false;for(const [,id]of part.matchAll(/#([\w-]+)/g))if(this.id!==id)return false;for(const [,name]of part.matchAll(/\.([\w-]+)/g))if(!this.className.split(/\s+/).includes(name))return false;for(const [,name,,value]of part.matchAll(/\[([\w-]+)(?:=(['"]?)([^\]'"]*)\2)?\]/g)){const actual=this.getAttribute(name);if(actual===null||actual===false||value!==undefined&&String(actual)!==value)return false;}return true;});}
+ descendants(){return this.children.flatMap(child=>[child,...(child.descendants?.()||[])]);}
+ querySelectorAll(selector){return this.descendants().filter(child=>child.matches?.(selector));}
+ querySelector(selector){return this.querySelectorAll(selector)[0]||null;}
+ contains(node){return node===this||this.descendants().includes(node);}
+ checkValidity(){return true;}
+ reportValidity(){return true;}
  getContext(_type,options){if(options?.willReadFrequently)return{drawImage(){},getImageData(){return{width:1,height:1,data:new Uint8ClampedArray(4)};}};if(this.id!=='player-qr')throw new Error('Avatar rendering is verified separately.');return{fillStyle:'',fillRect(){}};}
  click(){return this.disabled?undefined:this.listeners.click?.();}
  emit(name,event={}){return this.listeners[name]?.(event);}
- close(){this.open=false;this.listeners.close?.();}
- showModal(){this.open=true;}
+ close(){if(!this.open)return;this.open=false;const event={target:this};this.listeners.close?.(event);this.ownerDocument?.emit('close',event);}
+ showModal(){this.open=true;this.modalOpens++;}
  async play(){}
- focus(){}
+ focus(){if(this.ownerDocument)this.ownerDocument.activeElement=this;}
  select(){}
 }
-const ids=['play','player-scan-dialog','player-scan-video','scanner-message','play-status','play-error','scan-error','play-identity-player','player-code','player-qr','player-qr-label','player-qr-badge','qr-link-output','create-duo-qr','show-player-qr','player-qr-help','connected-player','my-duo','duo-invitations','play-matches','play-match-count','refresh-play','find-player','connect-player-form','connect-player-code','copy-qr-link','copy-player-code','scan-player','use-player-photo','scan-close','scan-file','scan-help'];
-const buttonIds=new Set(['create-duo-qr','show-player-qr','refresh-play','find-player','copy-qr-link','copy-player-code','scan-player','use-player-photo','scan-close']);
+const ids=['play','player-scan-dialog','player-scan-video','scanner-message','play-status','play-error','scan-error','play-identity-player','player-code','player-qr','player-qr-label','player-qr-badge','qr-link-output','create-duo-qr','show-player-qr','player-qr-help','connected-player','my-duo','duo-invitations','duo-invitation-dialog','duo-invitation-close','duo-invitation-error','duo-invitation-heading','duo-invitation-description','install-dialog','story-dialog','play-matches','play-match-count','refresh-play','find-player','connect-player-form','connect-player-code','copy-qr-link','copy-player-code','scan-player','use-player-photo','scan-close','scan-file','scan-help','match-settings-dialog','match-settings-form','match-settings-best-of','match-settings-points','match-settings-win-by','match-settings-submit','match-settings-close','match-settings-error'];
+const buttonIds=new Set(['create-duo-qr','show-player-qr','refresh-play','find-player','copy-qr-link','copy-player-code','scan-player','use-player-photo','scan-close','duo-invitation-close','match-settings-submit','match-settings-close']);
+const dialogIds=new Set(['player-scan-dialog','duo-invitation-dialog','install-dialog','story-dialog','match-settings-dialog']);
+const selectIds=new Set(['match-settings-best-of','match-settings-points','match-settings-win-by']);
 const origin='https://sideout-valencia.dchiligan.chatgpt.site';
 const token='a2790e87-4509-4625-9dad-c3acc267c2f7';
 const player=(id,name,code)=>({id,name,code,rating:1200,games:0,wins:0,avatar:{}});
@@ -34,21 +46,38 @@ const opponentPartner={...player('opponent-partner','Other Teammate','SO-3333333
 const opposingDuo={id:'duo-opponents',players:[opponent,opponentPartner]};
 const snapshot=(duo=null)=>({player:mine,duo,invitations:[],matches:[],history:[]});
 const paired=()=>snapshot({id:'duo-1',players:[mine,partner]});
-function deferred(){let resolve;const promise=new Promise(done=>{resolve=done;});return{promise,resolve};}
+const invitation=(id='invite-1',from=partner,expiresAt=60000)=>({id,from,expiresAt});
+const invited=(invitations=[invitation()])=>({...snapshot(),invitations});
+const challenge=(changes={})=>({id:'match-1',status:'pending',teams:{a:[opponent,opponentPartner],b:[mine,partner]},createdBy:opponent.id,createdAt:1000,reportedBy:null,completedAt:null,winnerSide:null,preview:{a:28,b:32},deltas:null,...changes});
+const challenged=(matches=[challenge()])=>({...paired(),matches});
+const button=(node,label)=>node.querySelectorAll('button').find(node=>node.textContent===label);
+const nextTurn=()=>new Promise(resolve=>setImmediate(resolve));
+const submitForm=async form=>{const pending=form.emit('submit',{preventDefault(){}});await nextTurn();return pending;};
+const matchFormat={bestOf:3,pointsToWin:11,winBy:2};
+function setScore(document,matchId,index,side,value){const input=document.getElementById(`score-${matchId}-${index}-${side}`);assert.ok(input,`Missing set ${index+1} ${side} score`);input.value=String(value);input.emit('input',{target:input});input.emit('change',{target:input});return input;}
+function deferred(){let resolve,reject;const promise=new Promise((done,fail)=>{resolve=done;reject=fail;});return{promise,resolve,reject};}
 
-async function withPlay({href=origin+'/#play',ready=true,request,onDuoFormed,onOpponentFound,loadQrDecoder,mediaDevices,createImageBitmap}={},run){
+async function withPlay({href=origin+'/#play',ready=true,request,onDuoFormed,onOpponentFound,loadQrDecoder,mediaDevices,createImageBitmap,initialPage='play',hidden=false,openDialog=null}={},run){
  const globals=['document','window','location','navigator','setInterval','clearInterval','createImageBitmap'];
  const previous=new Map(globals.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
- const nodes=Object.fromEntries(ids.map(id=>{const node=new Element(buttonIds.has(id)?'button':id==='player-qr'?'canvas':'div');node.id=id;return[id,node];}));
- nodes.play.children.push(...Object.values(nodes).filter(node=>node!==nodes.play));
- const calls=[],routes=[],copies=[],formations=[],opponents=[],polls=[],stats=[],page={id:'play'},documentListeners={},windowListeners={};let current=new URL(href),avatarReady=ready,time=1000;
+ const nodes=Object.fromEntries(ids.map(id=>{const node=new Element(buttonIds.has(id)?'button':dialogIds.has(id)?'dialog':selectIds.has(id)?'select':id.endsWith('-form')?'form':id==='player-qr'?'canvas':'div');node.id=id;return[id,node];}));
+ Object.assign(nodes['match-settings-best-of'],{value:'3'});Object.assign(nodes['match-settings-points'],{value:'11'});Object.assign(nodes['match-settings-win-by'],{value:'2'});
+ const globalIds=new Set(['duo-invitations','duo-invitation-dialog','duo-invitation-close','duo-invitation-error','duo-invitation-heading','duo-invitation-description','install-dialog','story-dialog',...ids.filter(id=>id.startsWith('match-settings-'))]);
+ nodes.play.append(...Object.values(nodes).filter(node=>node!==nodes.play&&!globalIds.has(node.id)));
+ nodes['duo-invitation-dialog'].append(nodes['duo-invitation-heading'],nodes['duo-invitation-description'],nodes['duo-invitation-close'],nodes['duo-invitation-error'],nodes['duo-invitations']);
+ nodes['match-settings-dialog'].append(nodes['match-settings-close'],nodes['match-settings-form']);nodes['match-settings-form'].append(nodes['match-settings-best-of'],nodes['match-settings-points'],nodes['match-settings-win-by'],nodes['match-settings-submit'],nodes['match-settings-error']);
+ const calls=[],routes=[],copies=[],formations=[],opponents=[],polls=[],stats=[],page={id:initialPage},documentListeners={},windowListeners={};let current=new URL(href),avatarReady=ready,time=1000;
  const location={get href(){return current.href;},get origin(){return current.origin;}};
- const document={hidden:false,getElementById:id=>nodes[id],createElement:tag=>new Element(tag),createTextNode:text=>({textContent:String(text)}),querySelector:selector=>selector==='.page.active'?page:null,addEventListener(name,callback){documentListeners[name]=callback;}};
+ const matchingDialogs=selector=>{const match=/^dialog(?:\[open\]|:modal)(?::not\(#([^)]*)\))?$/.exec(selector);return match?Object.values(nodes).filter(node=>node.tagName==='DIALOG'&&node.open&&node.id!==match[1]):[];};
+ const allNodes=()=>[...new Set(Object.values(nodes).flatMap(node=>[node,...node.descendants()]))];
+ const document={hidden,activeElement:null,getElementById:id=>nodes[id]||allNodes().find(node=>node.id===id),createElement:tag=>{const node=new Element(tag);node.ownerDocument=document;return node;},createTextNode:text=>({textContent:String(text)}),querySelector:selector=>selector==='.page.active'?page:matchingDialogs(selector)[0]||allNodes().find(node=>node.matches?.(selector))||null,querySelectorAll:selector=>selector.startsWith('dialog')?matchingDialogs(selector):allNodes().filter(node=>node.matches?.(selector)),addEventListener(name,callback){(documentListeners[name]||=[]).push(callback);},emit(name,event={}){for(const callback of documentListeners[name]||[])callback(event);}};
+ for(const node of Object.values(nodes))node.ownerDocument=document;
+ if(openDialog)nodes[openDialog].open=true;
  const service={async request(path,options={}){const body=options.body===undefined?undefined:JSON.parse(options.body);calls.push({path,body,method:options.method||'GET'});return request?request(path,body,calls):snapshot();}};
  const window={location,history:{replaceState(_state,_title,url){current=new URL(url,current);}},sideoutService:service,addEventListener(name,callback){windowListeners[name]=callback;}};
  for(const [key,value]of Object.entries({document,window,location,navigator:{mediaDevices,clipboard:{async writeText(value){copies.push(value);}}},setInterval:(callback,delay)=>{polls.push({callback,delay,active:true});return polls.length;},clearInterval:id=>{polls[id-1].active=false;},createImageBitmap}))Object.defineProperty(globalThis,key,{value,configurable:true,writable:true});
  const tick=()=>new Promise(resolve=>setImmediate(resolve));
- const context={nodes,calls,routes,copies,formations,opponents,polls,stats,location,setReady(value){avatarReady=value;},setTime(value){time=value;},setPage(value){page.id=value;},setUrl(value){current=new URL(value,current);},async visibility(hidden){document.hidden=hidden;documentListeners.visibilitychange?.();await tick();},async windowEvent(name,event={}){windowListeners[name]?.(event);await tick();},async poll(){for(const {callback,active}of polls)if(active)callback();await tick();},async lookup(input){nodes['connect-player-code'].value=input;nodes['connect-player-form'].emit('submit',{preventDefault(){}});await tick();}};
+ const context={nodes,calls,routes,copies,formations,opponents,polls,stats,location,document,setReady(value){avatarReady=value;},setTime(value){time=value;},setPage(value){page.id=value;},setUrl(value){current=new URL(value,current);},async visibility(hidden){document.hidden=hidden;document.emit('visibilitychange');await tick();},async windowEvent(name,event={}){windowListeners[name]?.(event);await tick();},async poll(){for(const {callback,active}of polls)if(active)callback();await tick();},async escapeInvitation(){let prevented=false;await nodes['duo-invitation-dialog'].emit('cancel',{preventDefault(){prevented=true;}});if(!prevented)nodes['duo-invitation-dialog'].close();await tick();return prevented;},async lookup(input){nodes['connect-player-code'].value=input;nodes['connect-player-form'].emit('submit',{preventDefault(){}});await tick();}};
  try{context.controller=await initPlay({getAvatarCreated:()=>avatarReady,now:()=>time,loadQrDecoder,onStats:value=>stats.push(value),onNavigate:route=>{routes.push(route);page.id=route;},onDuoFormed:(player,duo)=>{formations.push({player,duo});return onDuoFormed?.(player,duo);},onOpponentFound:(player,duo,otherDuo)=>{opponents.push({player,duo,otherDuo});return onOpponentFound?.(player,duo,otherDuo);}});await run(context);}
  finally{for(const [key,descriptor]of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}}
 }
@@ -153,6 +182,229 @@ test('the invite owner celebrates a newly joined teammate once when the normal p
  });
 });
 
+test('a pending invitation opens a global popup on startup with the saved inviter details',()=>withPlay({initialPage:'friends',request:()=>invited([invitation('first',{...partner,name:'<img src=x onerror=alert(1)> & Court Friend',rating:1140})])},async({nodes,calls,routes})=>{
+ const popup=nodes['duo-invitation-dialog'];
+ assert.equal(popup.open,true);assert.equal(popup.modalOpens,1);
+ assert.equal(nodes.play.querySelectorAll('button').includes(button(nodes['duo-invitations'],'Accept duo ↗')),false,'popup actions must live outside the hidden Play page');
+ assert.match(nodes['duo-invitations'].textContent,/<img src=x onerror=alert\(1\)> & Court Friend/);assert.match(nodes['duo-invitations'].textContent,/1140 MMR/);
+ assert.ok(button(popup,'Accept duo ↗'));assert.ok(button(popup,'Decline'));
+ assert.deepEqual(calls.map(call=>call.path),['/api/play']);assert.deepEqual(routes,[],'showing an invitation must preserve the current page');
+}));
+
+test('new invitations are polled and pop up from every signed-in page',async()=>{
+ for(const page of ['profile','rating','play','locker','friends','courts','leaderboard']){
+  let current=snapshot();
+  await withPlay({initialPage:page,request:()=>current},async({controller,polls,poll,nodes,routes})=>{
+   await controller.handleNavigation(page);
+   assert.equal(polls.filter(entry=>entry.active).length,1,`${page} keeps invitation polling active`);assert.equal(polls.find(entry=>entry.active).delay,20000);
+   current=invited();await poll();
+   assert.equal(nodes['duo-invitation-dialog'].open,true,`${page} receives the popup`);assert.match(nodes['duo-invitations'].textContent,/Court Friend/);assert.deepEqual(routes,[]);
+  });
+ }
+});
+
+test('close and Escape dismiss current invitations until manually reopened or a new invite arrives',async()=>{
+ let current=invited([invitation('first'),invitation('second',opponent)]);
+ await withPlay({request:()=>structuredClone(current)},async({nodes,controller,poll,escapeInvitation})=>{
+  const popup=nodes['duo-invitation-dialog'];
+  await nodes['duo-invitation-close'].click();assert.equal(popup.open,false);
+  await controller.refresh();await poll();assert.equal(popup.open,false);assert.equal(popup.modalOpens,1,'unchanged pending IDs cannot reopen a dismissed popup');
+  const reopen=button(nodes['my-duo'],'View duo invitation');assert.ok(reopen);await reopen.click();assert.equal(popup.open,true);
+  await escapeInvitation();assert.equal(popup.open,false);await controller.refresh();assert.equal(popup.open,false);
+  current=invited([...current.invitations,invitation('third',opponentPartner)]);await poll();
+  assert.equal(popup.open,true);assert.equal(popup.modalOpens,3);assert.match(nodes['duo-invitations'].textContent,/Other Teammate/);
+  assert.equal(nodes['duo-invitations'].querySelectorAll('button').filter(node=>node.textContent==='Accept duo ↗').length,3,'reopening presents all currently pending invitations');
+ });
+});
+
+test('identical invitations retain their focused actions through unchanged and unrelated stats refreshes',async()=>{
+ let current=invited();
+ await withPlay({request:()=>structuredClone(current)},async({nodes,controller,poll,document})=>{
+  const card=nodes['duo-invitations'].children[0],accept=button(card,'Accept duo ↗');accept.focus();
+  await controller.refresh();await poll();
+  assert.equal(nodes['duo-invitations'].children[0],card);assert.equal(document.activeElement,accept);assert.equal(nodes['duo-invitation-dialog'].modalOpens,1);
+  current={...current,player:{...mine,rating:1220,games:1,wins:1}};await controller.refresh();
+  assert.equal(nodes['duo-invitations'].children[0],card,'a stats update must not replace the invitation under the keyboard user');assert.equal(document.activeElement,accept);
+ });
+});
+
+test('a new invitation preserves the focused inviter and action when the popup list changes order',async()=>{
+ let current=invited([invitation('first')]);
+ await withPlay({request:()=>structuredClone(current)},async({nodes,poll,document})=>{
+  const originalDecline=button(nodes['duo-invitations'].children[0],'Decline');originalDecline.focus();
+  current=invited([invitation('second',opponent),...current.invitations]);await poll();
+  assert.equal(nodes['duo-invitation-dialog'].open,true);assert.equal(nodes['duo-invitation-dialog'].modalOpens,1);
+  const existingCard=nodes['duo-invitations'].children[1];assert.match(existingCard.textContent,/Court Friend/);
+  assert.equal(document.activeElement,button(existingCard,'Decline'),'focus follows the same invitation ID and action instead of the old list position');
+ });
+});
+
+test('a popup response blocks duplicate actions and dismissal, then shows failures and permits retry',async()=>{
+ const saved=deferred();let attempts=0,current=invited([invitation('first'),invitation('second',opponent)]);
+ await withPlay({initialPage:'locker',request:path=>{if(path==='/api/duos/first/respond'){if(++attempts===1)return saved.promise;current=invited([invitation('second',opponent)]);}return current;}},async({nodes,calls,escapeInvitation})=>{
+  const popup=nodes['duo-invitation-dialog'],decline=button(nodes['duo-invitations'],'Decline'),responding=decline.click();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(nodes['duo-invitation-close'].disabled,true);assert.ok(nodes['duo-invitations'].querySelectorAll('button').every(node=>node.disabled));
+  await decline.click();await nodes['duo-invitation-close'].click();assert.equal(await escapeInvitation(),true);assert.equal(popup.open,true);
+  assert.equal(calls.filter(call=>call.method==='POST').length,1);assert.deepEqual(calls.at(-1),{path:'/api/duos/first/respond',body:{accept:false},method:'POST'});
+  saved.reject(new Error('Connection interrupted. Try again.'));await responding;
+  assert.equal(popup.open,true);assert.equal(nodes['duo-invitation-error'].hidden,false);assert.match(nodes['duo-invitation-error'].textContent,/Connection interrupted/);assert.equal(nodes['duo-invitation-close'].disabled,false);
+  const retry=button(nodes['duo-invitations'],'Decline');assert.equal(retry.disabled,false);await retry.click();
+  assert.equal(attempts,2);assert.equal(popup.open,true);assert.doesNotMatch(nodes['duo-invitations'].textContent,/Court Friend/);assert.match(nodes['duo-invitations'].textContent,/Other Captain/);assert.equal(nodes['duo-invitation-error'].hidden,true);
+ });
+});
+
+test('declining one of two invitations keeps the popup open and focuses the remaining action',async()=>{
+ let current=invited([invitation('first'),invitation('second',opponent)]);
+ await withPlay({request:(path,body)=>{if(path==='/api/duos/first/respond'){assert.deepEqual(body,{accept:false});current=invited([invitation('second',opponent)]);}return current;}},async({nodes,calls,document})=>{
+  const decline=button(nodes['duo-invitations'].children[0],'Decline');decline.focus();await decline.click();
+  assert.equal(nodes['duo-invitation-dialog'].open,true);assert.equal(nodes['duo-invitation-dialog'].modalOpens,1);assert.equal(nodes['duo-invitations'].children.length,1);
+  const remaining=nodes['duo-invitations'].children[0],accept=button(remaining,'Accept duo ↗');assert.match(remaining.textContent,/Other Captain/);
+  assert.equal(document.activeElement,accept);assert.equal(accept.disabled,false);assert.equal(calls.filter(call=>call.method==='POST').length,1);
+ });
+});
+
+test('removed and locally expired invitations close the popup and cannot be reopened',async()=>{
+ for(const reason of ['removed','expired']){
+  let current=invited([invitation('first',partner,5000)]);
+  await withPlay({request:()=>current},async({nodes,controller,setTime})=>{
+   assert.equal(nodes['duo-invitation-dialog'].open,true);
+   if(reason==='removed')current=snapshot();else setTime(5000);
+   await controller.refresh();
+   assert.equal(nodes['duo-invitation-dialog'].open,false,reason);assert.equal(nodes['duo-invitations'].children.length,0,reason);assert.equal(button(nodes['my-duo'],'View duo invitation'),undefined,reason);
+  });
+ }
+});
+
+test('an expired invitation closes even when its quiet polling refresh fails',async()=>{
+ let reads=0;
+ await withPlay({request:()=>{if(++reads>1)throw new Error('Offline.');return invited([invitation('first',partner,5000)]);}},async({nodes,setTime,poll})=>{
+  assert.equal(nodes['duo-invitation-dialog'].open,true);setTime(22000);await poll();
+  assert.equal(reads,2);assert.equal(nodes['duo-invitation-dialog'].open,false);assert.equal(nodes['duo-invitations'].children.length,0);
+  assert.equal(nodes['play-error'].hidden,true,'background polling failures stay quiet');assert.equal(nodes['duo-invitation-error'].hidden,true);
+  const reopen=button(nodes['my-duo'],'View duo invitation');if(reopen)await reopen.click();
+  assert.equal(nodes['duo-invitation-dialog'].open,false,'cached data cannot reopen an expired invitation');
+ });
+});
+
+test('hidden tabs defer pending invitation popups until the page becomes visible',()=>withPlay({hidden:true,initialPage:'courts',request:()=>invited()},async({nodes,visibility,polls})=>{
+ assert.equal(nodes['duo-invitation-dialog'].open,false);assert.equal(polls.filter(entry=>entry.active).length,0);
+ await visibility(false);assert.equal(nodes['duo-invitation-dialog'].open,true);assert.equal(polls.filter(entry=>entry.active).length,1);
+}));
+
+test('pending invitations wait for another dialog to close before taking focus',async()=>{
+ for(const otherDialog of ['install-dialog','story-dialog','player-scan-dialog'])await withPlay({openDialog:otherDialog,request:()=>invited()},async({nodes})=>{
+  const popup=nodes['duo-invitation-dialog'];assert.equal(popup.open,false,otherDialog);assert.equal(nodes[otherDialog].open,true);
+  nodes[otherDialog].close();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(popup.open,true,`${otherDialog} close releases the queued invitation`);assert.equal(popup.modalOpens,1);
+ });
+});
+
+test('incoming challenges show both rosters and ratings for recipients on either team side',async()=>{
+ for(const ownSide of ['a','b']){
+  const match=challenge({teams:ownSide==='a'?{a:[mine,partner],b:[opponent,opponentPartner]}:{a:[opponent,opponentPartner],b:[mine,partner]}});
+  await withPlay({initialPage:'friends',request:()=>challenged([match])},async({nodes,routes,calls,formations})=>{
+   assert.equal(nodes['duo-invitation-dialog'].open,true,ownSide);assert.equal(nodes['duo-invitation-heading'].textContent,'You’ve been challenged.');
+   const content=nodes['duo-invitations'].textContent;for(const player of [mine,partner,opponent,opponentPartner])assert.ok(content.includes(player.name),player.name);
+   for(const rating of ['1480 MMR','1320 MMR','1200 MMR','1400 avg. MMR','1200 avg. MMR'])assert.ok(content.includes(rating),rating);
+   assert.ok(button(nodes['duo-invitations'],'Accept match ↗'));assert.ok(button(nodes['duo-invitations'],'Decline'));assert.equal(button(nodes['duo-invitations'],'Accept duo ↗'),undefined);
+   assert.ok(button(nodes['play-matches'],'View challenge'));assert.equal(button(nodes['play-matches'],'Accept match ↗'),undefined,'the inline card reopens the actionable popup');
+   assert.deepEqual(routes,[]);assert.equal(calls.some(call=>call.method==='POST'),false);assert.deepEqual(formations,[]);
+  });
+ }
+});
+
+test('incoming match challenges pop up through polling on every signed-in page',async()=>{
+ for(const page of ['profile','rating','play','locker','friends','courts','leaderboard']){
+  let current=paired();
+  await withPlay({initialPage:page,request:()=>current},async({nodes,controller,poll,routes})=>{
+   await controller.handleNavigation(page);assert.equal(nodes['duo-invitation-dialog'].open,false);
+   current=challenged();await poll();
+   assert.equal(nodes['duo-invitation-dialog'].open,true,page);assert.equal(nodes['duo-invitation-heading'].textContent,'You’ve been challenged.');assert.deepEqual(routes,[]);
+  });
+ }
+});
+
+test('outgoing, answered, unrelated, incomplete and expired challenges never become incoming popups',async()=>{
+ const scenarios=[
+  {label:'current player sent it',match:challenge({createdBy:mine.id})},
+  {label:'current teammate sent it',match:challenge({createdBy:partner.id})},
+  ...['active','completed','cancelled'].map(status=>({label:status,match:challenge({status})})),
+  {label:'creator is not on either team',match:challenge({createdBy:'unrelated-player'})},
+  {label:'current player is not a participant',match:challenge({teams:{a:[opponent,opponentPartner],b:[partner,player('other','Other Player','SO-444444444444')]}})},
+  {label:'one opposing player is missing',match:challenge({teams:{a:[opponent],b:[mine,partner]}})},
+  {label:'duplicate opposing player',match:challenge({teams:{a:[opponent,{...opponent}],b:[mine,partner]}})},
+  {label:'24-hour challenge lifetime elapsed',match:challenge({createdAt:-86400000})},
+  {label:'explicit expiry elapsed',match:challenge({expiresAt:1000})},
+ ];
+ for(const {label,match}of scenarios)await withPlay({request:()=>challenged([match])},async({nodes,calls})=>{
+  assert.equal(nodes['duo-invitation-dialog'].open,false,label);assert.equal(nodes['duo-invitations'].children.length,0,label);assert.equal(calls.some(call=>call.method==='POST'),false,label);
+ });
+});
+
+test('challenge close and Escape postpone the current match while View challenge or a new ID reopens it',async()=>{
+ let current=challenged();
+ await withPlay({request:()=>structuredClone(current)},async({nodes,controller,poll,escapeInvitation})=>{
+  const popup=nodes['duo-invitation-dialog'];await nodes['duo-invitation-close'].click();
+  await controller.refresh();await poll();assert.equal(popup.open,false);assert.equal(popup.modalOpens,1);
+  await button(nodes['play-matches'],'View challenge').click();assert.equal(popup.open,true);
+  await escapeInvitation();await controller.refresh();assert.equal(popup.open,false);
+  current=challenged([challenge({id:'match-2'})]);await poll();
+  assert.equal(popup.open,true);assert.equal(popup.modalOpens,3);assert.equal(nodes['duo-invitation-heading'].textContent,'You’ve been challenged.');
+ });
+});
+
+test('challenge accept and decline block duplicate submissions, show retry errors, and keep duo celebration silent',async()=>{
+ for(const accept of [true,false]){
+  const saved=deferred();let attempts=0,current=challenged();
+  await withPlay({initialPage:'courts',request:(path,body)=>{if(path==='/api/matches/match-1/respond'){assert.deepEqual(body,{accept});if(++attempts===1)return saved.promise;current=challenged([challenge({status:accept?'active':'cancelled'})]);}return current;}},async({nodes,calls,escapeInvitation,document,formations})=>{
+   const label=accept?'Accept match ↗':'Decline',action=button(nodes['duo-invitations'],label),responding=action.click();await new Promise(resolve=>setImmediate(resolve));
+   assert.equal(nodes['duo-invitation-close'].disabled,true);assert.ok(nodes['duo-invitations'].querySelectorAll('button').every(node=>node.disabled));
+   await action.click();await nodes['duo-invitation-close'].click();assert.equal(await escapeInvitation(),true);assert.equal(nodes['duo-invitation-dialog'].open,true);
+   assert.deepEqual(calls.filter(call=>call.method==='POST'),[{path:'/api/matches/match-1/respond',body:{accept},method:'POST'}]);
+   saved.reject(new Error('Connection interrupted. Try again.'));await responding;
+   assert.equal(nodes['duo-invitation-dialog'].open,true);assert.equal(nodes['duo-invitation-error'].hidden,false);assert.match(nodes['duo-invitation-error'].textContent,/Connection interrupted/);
+   const retry=button(nodes['duo-invitations'],label);assert.equal(retry.disabled,false);assert.equal(document.activeElement,button(nodes['duo-invitations'],'Accept match ↗'));
+   await retry.click();assert.equal(attempts,2);assert.equal(nodes['duo-invitation-dialog'].open,false);assert.equal(nodes['duo-invitations'].children.length,0);assert.deepEqual(formations,[]);
+   assert.deepEqual(calls.filter(call=>call.method==='POST').map(call=>call.body),[{accept},{accept}]);
+  });
+ }
+});
+
+test('teammate acceptance, cancellation and removed matches close pending challenge popups on refresh',async()=>{
+ for(const status of ['active','cancelled','removed']){
+  let current=challenged();
+  await withPlay({request:()=>current},async({nodes,poll,calls,formations})=>{
+   assert.equal(nodes['duo-invitation-dialog'].open,true);current=status==='removed'?paired():challenged([challenge({status})]);await poll();
+   assert.equal(nodes['duo-invitation-dialog'].open,false,status);assert.equal(nodes['duo-invitations'].children.length,0,status);assert.equal(button(nodes['play-matches'],'View challenge'),undefined,status);
+   assert.equal(calls.some(call=>call.method==='POST'),false);assert.deepEqual(formations,[]);
+  });
+ }
+});
+
+test('challenge expiry closes cached popups even when quiet refresh fails',async()=>{
+ for(const explicit of [false,true]){
+  let reads=0;const match=challenge(explicit?{expiresAt:5000}:{});
+  await withPlay({request:()=>{if(++reads>1)throw new Error('Offline.');return challenged([match]);}},async({nodes,setTime,poll})=>{
+   assert.equal(nodes['duo-invitation-dialog'].open,true);setTime(explicit?5000:86401000);await poll();
+   assert.equal(reads,2);assert.equal(nodes['duo-invitation-dialog'].open,false);assert.equal(nodes['duo-invitations'].children.length,0);assert.equal(button(nodes['play-matches'],'View challenge'),undefined);
+   assert.equal(nodes['play-error'].hidden,true);assert.equal(nodes['duo-invitation-error'].hidden,true);
+  });
+ }
+});
+
+test('explicit challenge expiry overrides its creation date and legacy matches without dates remain answerable',async()=>{
+ for(const match of [challenge({createdAt:-86400000,expiresAt:60000}),challenge({createdAt:undefined})])await withPlay({request:()=>challenged([match])},async({nodes})=>{
+  assert.equal(nodes['duo-invitation-dialog'].open,true);assert.ok(button(nodes['duo-invitations'],'Accept match ↗'));
+ });
+});
+
+test('challenge popups defer to another dialog and preserve focused actions on unchanged polling',()=>withPlay({openDialog:'story-dialog',request:()=>structuredClone(challenged())},async({nodes,controller,poll,document})=>{
+ const popup=nodes['duo-invitation-dialog'];assert.equal(popup.open,false);
+ nodes['story-dialog'].close();await new Promise(resolve=>setImmediate(resolve));assert.equal(popup.open,true);
+ const card=nodes['duo-invitations'].children[0],decline=button(card,'Decline');decline.focus();await controller.refresh();await poll();
+ assert.equal(nodes['duo-invitations'].children[0],card);assert.equal(document.activeElement,decline);assert.equal(popup.modalOpens,1);
+}));
+
 test('accepting a traditional invitation celebrates, leaving does not, and a later new duo can celebrate',async()=>{
  let current={...snapshot(),invitations:[{id:'invite-1',from:partner}]};
  await withPlay({request:path=>{
@@ -161,7 +413,8 @@ test('accepting a traditional invitation celebrates, leaving does not, and a lat
   return current;
  }},async({nodes,formations,controller})=>{
   const accept=nodes['duo-invitations'].querySelectorAll('button').find(button=>button.textContent==='Accept duo ↗');
-  assert.ok(accept);assert.deepEqual(formations,[]);await accept.click();
+  assert.ok(accept);assert.equal(nodes['duo-invitation-dialog'].open,true);assert.deepEqual(formations,[]);await accept.click();
+  assert.equal(nodes['duo-invitation-dialog'].open,false);assert.equal(nodes['duo-invitations'].children.length,0);
   assert.equal(formations.length,1);assert.equal(formations[0].duo.id,'duo-1');
   const leave=nodes['my-duo'].querySelectorAll('button').find(button=>button.textContent==='Leave this duo');
   assert.ok(leave);await leave.click();assert.equal(formations.length,1);
@@ -296,15 +549,16 @@ test('an older opponent refresh cannot overwrite a newer explicit player lookup'
  });
 });
 
-test('polling pauses offscreen and resumes after visibility and back-forward cache restoration',()=>withPlay({},async({controller,calls,polls,visibility,windowEvent,setTime,setPage,poll})=>{
+test('polling pauses in hidden tabs, resumes after restoration, and keeps invitations active on other pages',()=>withPlay({},async({controller,calls,polls,visibility,windowEvent,setTime,setPage,poll})=>{
  assert.equal(polls.filter(entry=>entry.active).length,1);
  await visibility(true);assert.equal(polls.filter(entry=>entry.active).length,0);await poll();assert.equal(calls.length,1);
  setTime(22000);await visibility(false);assert.equal(polls.filter(entry=>entry.active).length,1);assert.equal(calls.length,2);
  await windowEvent('pagehide');assert.equal(polls.filter(entry=>entry.active).length,0);
  setTime(43000);await windowEvent('pageshow',{persisted:true});assert.equal(polls.filter(entry=>entry.active).length,1);assert.equal(calls.length,3);
- setPage('locker');await controller.handleNavigation('locker');assert.equal(polls.filter(entry=>entry.active).length,0);
- await poll();assert.equal(calls.length,3);
- setPage('profile');await controller.handleNavigation('profile');assert.equal(polls.filter(entry=>entry.active).length,1);assert.equal(calls.length,3);
+ setPage('locker');await controller.handleNavigation('locker');assert.equal(polls.filter(entry=>entry.active).length,1);
+ await poll();assert.equal(calls.length,4);
+ setPage('profile');await controller.handleNavigation('profile');assert.equal(polls.filter(entry=>entry.active).length,1);assert.equal(calls.length,4);
+ setPage('avatar');await controller.handleNavigation('avatar');assert.equal(polls.filter(entry=>entry.active).length,0);await poll();assert.equal(calls.length,4);
 }));
 
 test('the photo QR decoder loads only when a photo is read and is reused for subsequent photos',async()=>{
@@ -336,5 +590,142 @@ test('camera scanning loads the decoder once and closes the camera after finding
   assert.equal(loads,1);assert.equal(decodes,1);assert.equal(stops,1);assert.equal(nodes['player-scan-dialog'].open,false);assert.equal(calls.filter(call=>call.path.endsWith(partner.code)).length,1);
   await nodes['scan-player'].click();await new Promise(resolve=>setImmediate(resolve));
   assert.equal(loads,1);assert.equal(decodes,2);assert.equal(stops,2);
+ });
+});
+
+test('Challenge opens global match settings with defaults and closing or Escape sends no challenge',()=>withPlay({request:path=>path.startsWith('/api/players/')?{player:opponent,duo:opposingDuo}:paired()},async({nodes,lookup,calls})=>{
+ await lookup(opponent.code);
+ const open=()=>button(nodes['connected-player'],'Challenge their duo ↗').click();
+ await open();assert.equal(nodes['match-settings-dialog'].open,true);
+ assert.equal(nodes.play.contains(nodes['match-settings-dialog']),false,'settings must remain global when Play is hidden');
+ assert.equal(nodes['match-settings-best-of'].value,'3');assert.equal(nodes['match-settings-points'].value,'11');assert.equal(nodes['match-settings-win-by'].value,'2');
+ assert.equal(calls.some(call=>call.method==='POST'),false);
+ await nodes['match-settings-close'].click();assert.equal(nodes['match-settings-dialog'].open,false);
+ await open();let prevented=false;nodes['match-settings-dialog'].emit('cancel',{preventDefault(){prevented=true;}});if(!prevented)nodes['match-settings-dialog'].close();await nextTurn();
+ assert.equal(nodes['match-settings-dialog'].open,false);assert.equal(calls.some(call=>call.method==='POST'),false);
+}));
+
+test('selected match settings survive refresh and failed submission, block duplicates, and persist in the created challenge',async()=>{
+ const saved=deferred(),format={bestOf:5,pointsToWin:21,winBy:1};let attempts=0,current=paired();
+ await withPlay({request:(path,body)=>{if(path.startsWith('/api/players/'))return{player:opponent,duo:opposingDuo};if(path==='/api/matches'){if(++attempts===1)return saved.promise;current={...paired(),matches:[challenge({teams:{a:[mine,partner],b:[opponent,opponentPartner]},createdBy:mine.id,format:body.format})]};}return current;}},async({nodes,lookup,calls,controller})=>{
+  await lookup(opponent.code);await button(nodes['connected-player'],'Challenge their duo ↗').click();
+  nodes['match-settings-best-of'].value='5';nodes['match-settings-points'].value='21';nodes['match-settings-win-by'].value='1';
+  await controller.refresh();assert.equal(nodes['match-settings-best-of'].value,'5');assert.equal(nodes['match-settings-points'].value,'21');assert.equal(nodes['match-settings-win-by'].value,'1');
+  const submitting=nodes['match-settings-form'].emit('submit',{preventDefault(){}});await nextTurn();
+  assert.equal(nodes['match-settings-submit'].disabled,true);assert.equal(nodes['match-settings-close'].disabled,true);
+  nodes['match-settings-form'].emit('submit',{preventDefault(){}});await nodes['match-settings-close'].click();let prevented=false;nodes['match-settings-dialog'].emit('cancel',{preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);assert.equal(nodes['match-settings-dialog'].open,true);assert.equal(calls.filter(call=>call.path==='/api/matches').length,1);
+  saved.reject(new Error('Connection interrupted. Try again.'));await submitting;await nextTurn();
+  assert.equal(nodes['match-settings-dialog'].open,true);assert.equal(nodes['match-settings-error'].hidden,false);assert.match(nodes['match-settings-error'].textContent,/Connection interrupted/);
+  assert.equal(nodes['match-settings-submit'].disabled,false);assert.equal(nodes['match-settings-best-of'].value,'5');
+  await submitForm(nodes['match-settings-form']);
+  assert.equal(nodes['match-settings-dialog'].open,false);assert.equal(attempts,2);
+  assert.deepEqual(calls.filter(call=>call.path==='/api/matches').map(call=>call.body),[{playerCode:opponent.code,format},{playerCode:opponent.code,format}]);
+  assert.match(nodes['play-matches'].textContent,/Best of 5 · 21 points · Win by 1/);
+ });
+});
+
+test('a challenge waits for an in-flight refresh and rejects a replacement duo on either side',async()=>{
+ for(const changedSide of ['own','opponent']){
+  let current=paired(),opponentView={player:opponent,duo:opposingDuo},playRead=null;
+  await withPlay({request:path=>path.startsWith('/api/players/')?structuredClone(opponentView):path==='/api/play'&&playRead?playRead.promise:structuredClone(current)},async({nodes,lookup,controller,calls})=>{
+   await lookup(opponent.code);await button(nodes['connected-player'],'Challenge their duo ↗').click();
+   if(changedSide==='own')current={...paired(),duo:{id:'replacement-own-duo',players:[mine,player('replacement-partner','New Teammate','SO-444444444444')]}};
+   else opponentView={player:opponent,duo:{id:'replacement-opponent-duo',players:[opponent,player('replacement-opponent','New Opponent','SO-555555555555')]}};
+   playRead=deferred();const updating=controller.refresh();await nextTurn();
+   const submitting=nodes['match-settings-form'].emit('submit',{preventDefault(){}});await nextTurn();
+   assert.equal(nodes['match-settings-submit'].disabled,true);assert.equal(calls.some(call=>call.path==='/api/matches'),false,'a pending refresh must finish before creating a challenge');
+   playRead.resolve(structuredClone(current));await Promise.all([updating,submitting]);
+   assert.equal(calls.some(call=>call.path==='/api/matches'),false,`${changedSide} duo changes require the player to review the matchup again`);
+   assert.equal(nodes['match-settings-dialog'].open,true);assert.equal(nodes['match-settings-error'].hidden,false);assert.match(nodes['match-settings-error'].textContent,/duos changed/i);assert.equal(nodes['match-settings-submit'].disabled,false);assert.equal(nodes['match-settings-close'].disabled,false);
+  });
+ }
+});
+
+test('invalid settings are rejected before sending and newly received challenges defer until settings close',async()=>{
+ let current=paired();
+ await withPlay({request:path=>path.startsWith('/api/players/')?{player:opponent,duo:opposingDuo}:current},async({nodes,lookup,calls,poll})=>{
+  await lookup(opponent.code);await button(nodes['connected-player'],'Challenge their duo ↗').click();
+  for(const [id,value]of [['match-settings-best-of','2'],['match-settings-points','10'],['match-settings-win-by','3']]){
+   nodes['match-settings-best-of'].value='3';nodes['match-settings-points'].value='11';nodes['match-settings-win-by'].value='2';nodes[id].value=value;
+   await submitForm(nodes['match-settings-form']);assert.equal(calls.some(call=>call.path==='/api/matches'),false);assert.equal(nodes['match-settings-error'].hidden,false);
+  }
+  current=challenged([challenge({format:matchFormat})]);await poll();assert.equal(nodes['duo-invitation-dialog'].open,false);assert.equal(nodes['match-settings-dialog'].open,true);
+  await nodes['match-settings-close'].click();await nextTurn();assert.equal(nodes['duo-invitation-dialog'].open,true);assert.match(nodes['duo-invitations'].textContent,/Best of 3 · 11 points · Win by 2/);
+ });
+});
+
+test('saved format is shown in incoming challenges and normal match cards without inventing legacy rules',async()=>{
+ for(const format of [matchFormat,{bestOf:1,pointsToWin:15,winBy:1},{bestOf:5,pointsToWin:21,winBy:2}])await withPlay({request:()=>challenged([challenge({format})])},async({nodes})=>{
+  const text=`Best of ${format.bestOf} · ${format.pointsToWin} points · Win by ${format.winBy}`;assert.ok(nodes['duo-invitations'].textContent.includes(text));assert.ok(nodes['play-matches'].textContent.includes(text));
+ });
+ for(const format of [null,undefined])await withPlay({request:()=>challenged([challenge({format})])},async({nodes})=>{assert.doesNotMatch(nodes['duo-invitations'].textContent,/Best of/);assert.doesNotMatch(nodes['play-matches'].textContent,/Best of/);});
+});
+
+test('formatted score entry validates set rules and incomplete, partial, gapped or extra sets before any POST',async()=>{
+ const invalid=[[[11,10],[11,7]],[[11,7]],[[11,7],['',11],[12,10]],[[11,7],['',''],[11,7]],[[11,7],[11,8],[11,9]],[[-1,11],[11,7],[12,10]],[[11.5,7],[11,7]],[[11,11],[11,7]]];
+ for(const scores of invalid)await withPlay({request:()=>challenged([challenge({status:'active',format:matchFormat})])},async({nodes,calls,document})=>{
+  for(const [index,score]of scores.entries())for(const [side,value]of [['a',score[0]],['b',score[1]]])setScore(document,'match-1',index,side,value);
+  await submitForm(document.getElementById('result-match-1'));
+  assert.equal(calls.some(call=>call.path.endsWith('/result')),false,JSON.stringify(scores));const error=document.getElementById('score-error-match-1');assert.equal(error.hidden,false,JSON.stringify(scores));assert.ok(error.textContent.length>0,JSON.stringify(scores));
+ });
+});
+
+test('formatted scores derive the winner, preserve drafts on refresh and failure, and submit once per attempt',async()=>{
+ const saved=deferred(),scores=[{a:11,b:7},{a:9,b:11},{a:12,b:10}];let attempts=0,current=challenged([challenge({status:'active',format:matchFormat})]);
+ await withPlay({request:(path,body)=>{if(path.endsWith('/result')){if(++attempts===1)return saved.promise;current=challenged([challenge({status:'completed',format:matchFormat,scores:body.scores,winnerSide:'a'})]);}return current;}},async({nodes,calls,controller,document})=>{
+  assert.equal(nodes['play-matches'].querySelector('select'),null,'a scored match must derive its winner');
+  for(const [index,score]of scores.entries())for(const side of ['a','b'])setScore(document,'match-1',index,side,score[side]);
+  current={...current,player:{...mine,name:'My Updated Player'}};await controller.refresh();for(const [index,score]of scores.entries())for(const side of ['a','b'])assert.equal(document.getElementById(`score-match-1-${index}-${side}`).value,String(score[side]));
+  const form=document.getElementById('result-match-1'),submitting=form.emit('submit',{preventDefault(){}});await nextTurn();
+  assert.ok(nodes['play-matches'].querySelectorAll('input').every(input=>input.disabled));form.emit('submit',{preventDefault(){}});assert.equal(calls.filter(call=>call.path.endsWith('/result')).length,1);
+  saved.reject(new Error('Save interrupted. Retry your score.'));await submitting;await nextTurn();
+  assert.match(nodes['play-error'].textContent,/Save interrupted/);for(const [index,score]of scores.entries())for(const side of ['a','b'])assert.equal(document.getElementById(`score-match-1-${index}-${side}`).value,String(score[side]));
+  await submitForm(document.getElementById('result-match-1'));assert.equal(attempts,2);
+  assert.deepEqual(calls.filter(call=>call.path.endsWith('/result')).map(call=>call.body),[{scores},{scores}]);
+  assert.match(nodes['play-matches'].textContent,/RESULT RECORDED/);assert.match(nodes['play-matches'].textContent,/11.*7/);assert.match(nodes['play-matches'].textContent,/12.*10/);
+ });
+});
+
+test('unrelated profile refreshes restore the focused score field and retain the entered draft',async()=>{
+ let current=challenged([challenge({status:'active',format:matchFormat})]);
+ await withPlay({request:()=>structuredClone(current)},async({nodes,controller,document})=>{
+  setScore(document,'match-1',0,'a',11);setScore(document,'match-1',0,'b',7);setScore(document,'match-1',1,'a',11);
+  const original=setScore(document,'match-1',1,'b',8);original.focus();
+  current={...current,player:{...mine,name:'Updated Player Name'}};await controller.refresh();
+  const restored=document.getElementById(original.id);assert.notEqual(restored,original,'this refresh must exercise replacement of the match form');assert.equal(document.activeElement,restored);assert.equal(nodes.play.contains(document.activeElement),true);assert.equal(restored.value,'8');
+  assert.equal(document.getElementById('score-match-1-0-a').value,'11');assert.equal(document.getElementById('score-match-1-0-b').value,'7');assert.equal(document.getElementById('score-match-1-1-a').value,'11');
+  const otherDialog=nodes['story-dialog'];otherDialog.showModal();otherDialog.focus();current={...current,player:{...current.player,name:'Another Profile Update'}};await controller.refresh();
+  assert.equal(document.activeElement,otherDialog,'a score redraw must leave focus inside another open dialog');
+ });
+});
+
+test('a failed score submission restores the last focused field and clears its error after editing and retrying',async()=>{
+ const saved=deferred(),firstScores=[{a:11,b:7},{a:11,b:8}];let attempts=0,current=challenged([challenge({status:'active',format:matchFormat})]);
+ await withPlay({request:(path,body)=>{if(path.endsWith('/result')){if(++attempts===1)return saved.promise;current=challenged([challenge({status:'completed',format:matchFormat,scores:body.scores,winnerSide:'a'})]);}return structuredClone(current);}},async({nodes,document,calls})=>{
+  for(const [index,score]of firstScores.entries())for(const side of ['a','b'])setScore(document,'match-1',index,side,score[side]);
+  const lastFocused=document.getElementById('score-match-1-0-b');lastFocused.focus();lastFocused.emit('focus');
+  const form=document.getElementById('result-match-1');form.querySelector('button[type="submit"]').focus();
+  const submitting=form.emit('submit',{preventDefault(){}});await nextTurn();saved.reject(new Error('Connection lost. Please retry.'));await submitting;
+  const restored=document.getElementById(lastFocused.id),problem=document.getElementById('score-error-match-1');
+  assert.notEqual(restored,lastFocused);assert.equal(document.activeElement,restored,'clicking Submit must not lose the earlier focused score field');assert.equal(nodes.play.contains(document.activeElement),true);assert.equal(restored.disabled,false);assert.equal(restored.value,'7');assert.equal(problem.hidden,false);assert.match(problem.textContent,/Connection lost/);
+  setScore(document,'match-1',0,'b',8);assert.equal(problem.hidden,true);assert.equal(problem.textContent,'');
+  await submitForm(document.getElementById('result-match-1'));
+  assert.equal(attempts,2);assert.deepEqual(calls.filter(call=>call.path.endsWith('/result')).map(call=>call.body),[{scores:firstScores},{scores:[{a:11,b:8},{a:11,b:8}]}]);
+  assert.equal(nodes['play-error'].hidden,true);assert.match(nodes['play-matches'].textContent,/RESULT RECORDED/);assert.doesNotMatch(nodes['play-matches'].textContent,/Connection lost/);
+ });
+});
+
+test('a straight-set win excludes blank unplayed slots from its score submission',()=>withPlay({request:()=>challenged([challenge({status:'active',format:matchFormat})])},async({document,calls})=>{
+ setScore(document,'match-1',0,'a',11);setScore(document,'match-1',0,'b',7);setScore(document,'match-1',1,'a',11);setScore(document,'match-1',1,'b',8);
+ await submitForm(document.getElementById('result-match-1'));
+ assert.deepEqual(calls.find(call=>call.path.endsWith('/result')).body,{scores:[{a:11,b:7},{a:11,b:8}]});
+}));
+
+test('legacy active matches retain winner selection and never submit invented scores',async()=>{
+ for(const format of [null,undefined])await withPlay({request:()=>challenged([challenge({status:'active',format})])},async({nodes,calls})=>{
+  const select=nodes['play-matches'].querySelector('select');assert.ok(select);assert.equal(nodes['play-matches'].querySelectorAll('input').length,0);select.value='b';select.emit('change',{target:select});
+  await submitForm(nodes['play-matches'].querySelector('form'));
+  assert.deepEqual(calls.find(call=>call.path.endsWith('/result')).body,{winnerSide:'b'});
  });
 });

@@ -27,6 +27,33 @@ These functions use `SECURITY DEFINER` with an empty search path, qualified sche
 
 Profiles and ladder records initialize on authenticated use. Avatar completion is required for play. Cosmetic profile fields cannot assign real ratings. Result submission locks the match and players, validates the accepted team snapshot, computes the 20–40-point award from the two duo averages, and commits the result once. An error rolls back every player's update.
 
+### Linear rating award migration
+
+`migrations/20261020041959_sideout_linear_rating_award.sql` prepares the new rule for a future release. It replaces only the existing private `sideout.award(numeric,numeric)` helper; the original migration remains unchanged. Both match previews and result submission already use this helper. No migration or fixture from this change has been applied to the live project.
+
+The award is `clamp(round(30 + (opponent duo average - winner duo average) / 10), 20, 40)`. Each duo average uses both saved player ratings without rounding the average first. A 1200-MMR duo beating a 1300-MMR duo gains 40 per player; equal duos gain 30; a favorite ahead by at least 100 gains 20. Intermediate gaps scale by one point per 10 MMR. Round the complete positive total, with half points rounding upward, before bounding the award. Each losing player loses the same award, subject to the existing 100-MMR floor.
+
+Apply this forward migration with the matching application release before using the new rule in production. Results recorded afterward use the new award; stored completed-match deltas, existing player ratings, public RPC grants, RLS, and match/player locking are unchanged. The migration contains no data rewrite.
+
+### Match settings and set scores
+
+`migrations/20261020052413_sideout_match_scoring.sql` adds nullable `format` and `scores` to private matches and their public match/history views. Apply it after the linear rating migration and before releasing a client that sends settings or scores. It has been verified only in isolated PostgreSQL; it has not been applied to the live project.
+
+New formatted challenges use exactly `{"bestOf":3,"pointsToWin":11,"winBy":2}`-shaped JSON. `bestOf` accepts 1, 3, or 5; `pointsToWin` accepts 11, 15, or 21; `winBy` accepts 1 or 2. All three fields must be numeric integers, with no extra fields. The browser defaults to best of three, 11 points, win by two. The chosen format is fixed when the challenge is created and cannot be changed afterward.
+
+| RPC signature and named arguments | Behavior |
+| --- | --- |
+| `sideout_match_create(p_code text)` | Retained legacy challenge with null format |
+| `sideout_match_create(p_code text, p_format jsonb)` | Validate and save the chosen format |
+| `sideout_match_result(p_id uuid, p_winner text)` | Retained winner-only reporting for legacy matches |
+| `sideout_match_result(p_id uuid, p_scores jsonb, p_winner text default null)` | Derive the winner from the saved format and scores; an optional supplied winner must agree |
+
+The required `p_scores` argument distinguishes scored reporting from the legacy overload. The browser service passes `p_format` only when settings are present and `p_scores` only when set scores are present. Explicit null settings are rejected; omitting settings preserves legacy behavior. A formatted match rejects the winner-only gateway, while a legacy match continues to require a winner and rejects score reporting.
+
+Scores are an ordered array such as `[{"a":11,"b":8},{"a":9,"b":11},{"a":12,"b":10}]`, using the match's saved `a` and `b` rosters. Each set contains only numeric integer `a` and `b` scores from 0 to 99. No ties, incomplete sets, unplayed overshoots, or sets after either duo wins a majority are allowed. Win-by-one sets end at the target with the other duo below it. Win-by-two sets end at the target when the loser is at least two behind, or exactly two above the loser after deuce: 11–9 and 12–10 are valid for 11/by-two; 12–0, 12–9, and 20–5 are not.
+
+Scored reporting keeps the existing authentication, participant authorization, deterministic player/match locks, and stale-rating checks. It applies the rating award once per whole match and atomically stores the derived winner, scores, four deltas, and completed history. Invalid scores, winner mismatches, stale snapshots, and repeated results change no player stats or saved results. Existing completed matches retain null format/scores and their stored deltas. New private validation and completion helpers remain inaccessible to browser roles; only the two new guarded overloads are granted to authenticated users.
+
 ## Production Google Auth setup
 
 The hosted interface is Google-first: **Continue with Google** creates an account or signs in an existing player. Cloud email/password form submissions are rejected by the browser service; the optional local SQLite backend and its email/password forms remain available. This interface change does not disable Supabase email-confirmation protections.
@@ -64,10 +91,14 @@ The fixture checks:
 - Anonymous and missing-identity denial, private-table and helper access restrictions, and account isolation.
 - Profile defaults, height/body/character validation, all wardrobe and hair/color choices, gender-specific hairstyles, and rejection of client-supplied real statistics.
 - Stable player codes, duo invitations and acceptance, duo membership restrictions, challenges and acceptance, cancellation, and expiry.
-- Four-player rating updates for a favorite win (+22), upset (+38), and equal duos (+30), the 100-point floor, and progression beyond 5000.
+- Four-player rating updates for a favorite win (+20), upset (+40), and equal duos (+30), the 100-point floor, and progression beyond 5000.
 - Outsider denial, duplicate-result denial, and rollback when the accepted match snapshot is stale.
 
-The fixture passed against the configured project. No test users or games were retained. The JavaScript suite (`npm test`) separately checks the local backend and Supabase service contract, including Google OAuth redirects and errors; it does not run this live SQL fixture or complete a real Google login.
+`tests/rating-rule.sql` separately checks the helper and duo-average previews at equal ratings, gaps of ±25/50/75/100, the 1200-versus-1300 example, fractional averages, half-point rounding, and extreme-rating caps. It also checks the private helper's privileges and function configuration. Execute this entire transaction, including its final `ROLLBACK`, after applying the new migration in an isolated database.
+
+`tests/match-scoring.sql` checks all 18 supported formats, terminal scores and deuce, strict JSON input, incomplete and extra sets, authentication and participant permissions, both result overloads, immutable settings, mismatch and legacy-bypass rejection, one award per match, stale-snapshot rollback, duplicate submission, and saved history. Its fixture accounts, matches, and ratings are rolled back with the entire transaction.
+
+The current migration set and all nine SQL acceptance fixtures passed in isolated PGlite 0.5.10 (PostgreSQL 18.6), with zero fixture accounts after rollback. The updated rating and scoring fixtures have not been run against the live project. The JavaScript suite (`npm test`) separately checks the local backend and Supabase service contract, including Google OAuth redirects and errors; it does not run these SQL fixtures or complete a real Google login.
 
 ## Leaderboard
 

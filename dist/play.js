@@ -1,5 +1,6 @@
 import {drawAvatar} from './pixel-player.js';
 import {renderPlayerQr,renderDuoQr,parsePlayerCode,playerLink,duoLink,parseDuoInvite} from './qr.js';
+import {normalizeMatchFormat,validateMatchScores} from './match-format.js';
 
 const el=(tag,className='',content='')=>{const node=document.createElement(tag);if(className)node.className=className;if(content!==''&&content!=null)node.textContent=String(content);return node;};
 const signed=value=>`${Number(value)>=0?'+':''}${value}`;
@@ -12,14 +13,21 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
  if(!root)return{refresh:async()=>{},handleNavigation:async()=>{},closeScanner:()=>{}};
  const byId=id=>document.getElementById(id);
  const dialog=byId('player-scan-dialog'),video=byId('player-scan-video'),scanMessage=byId('scanner-message');
+ const invitationDialog=byId('duo-invitation-dialog'),invitationError=byId('duo-invitation-error');
+ const settingsDialog=byId('match-settings-dialog');
  let data=null,connected=null,busy=false,refreshing=null,stream=null,scanTimer=null,scanGeneration=0,lookingUp=false,deepLinkHandled=false;
  let duoInvite=null,showDuoQr=false,qrLink='',joining=false;
  let lastReceived=null,statsSignature='',renderSignature='',connectedVersion=0,decoderPromise=null,decodeQr=null,poll=null;
  const pollInterval=20000;
  const winnerChoices=new Map();
+ const scoreDrafts=new Map(),scoreErrors=new Map();
+ let challengeTarget=null;
+ let lastScoreFocusId=null,scoreRetryFocusId=null;
+ const dismissedInvitations=new Set();
+ let invitationSignature='',presentedInvitations=[];
  const scannerCanvas=document.createElement('canvas');
  const status=message=>{byId('play-status').textContent=message||'';};
- const error=message=>{byId('play-error').textContent=message||'';byId('play-error').hidden=!message;};
+ const error=message=>{byId('play-error').textContent=message||'';byId('play-error').hidden=!message;if(invitationDialog.open||!message){invitationError.textContent=message||'';invitationError.hidden=!message;}};
  const scanError=message=>{byId('scan-error').textContent=message||'';byId('scan-error').hidden=!message;};
  const isMine=player=>Boolean(data&&player&&(player.id===data.player.id||player.code===data.player.code));
  const samePlayer=(first,second)=>Boolean(first&&second&&(first.id&&first.id===second.id||first.code&&first.code===second.code));
@@ -62,12 +70,12 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   }
   await applyConnected(connectedRead===undefined?readConnected():connectedRead);
  };
- const setBusy=value=>{busy=value;renderSignature='';root.querySelectorAll('button').forEach(button=>button.disabled=value);root.setAttribute('aria-busy',String(value));};
- const runAction=async(path,body,message)=>{
+ const setBusy=value=>{busy=value;renderSignature='';for(const container of [root,invitationDialog,settingsDialog]){for(const tag of ['button','input','select'])container.querySelectorAll(tag).forEach(control=>control.disabled=value);container.setAttribute('aria-busy',String(value));}};
+ const runAction=async(path,body,message,onProblem=()=>{})=>{
   if(busy)return;
   error('');status('Saving your game…');setBusy(true);
-  try{if(refreshing)await refreshing;await applyData(await api(path,body));status(message);}catch(problem){error(problem.message);status('');}
-  finally{setBusy(false);render();}
+  try{if(refreshing)await refreshing;await applyData(await api(path,body));status(message);}catch(problem){error(problem.message);onProblem(problem.message);status('');}
+  finally{setBusy(false);render();if(invitationDialog.open)byId('duo-invitations').querySelectorAll('button')[0]?.focus();}
  };
  function renderIdentity(){
   byId('play-identity-player').replaceChildren(person(data.player));
@@ -126,16 +134,40 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   const actions=el('div','play-actions');
   actions.append(mutableButton('Add friend ↗',()=>requestFriend(player),'button button-outline'));
   const alreadyPartner=data.duo?.players.some(partner=>partner.id===player.id);
-  const invite=mutableButton('Invite as my duo ↗',()=>runAction('/api/duos',{playerCode:player.code},`Duo invite sent to ${player.name}. They can accept it in Connect & play.`),'button play-accent');
+  const invite=mutableButton('Invite as my duo ↗',()=>runAction('/api/duos',{playerCode:player.code},`Duo invite sent to ${player.name}. It will pop up on their screen while they’re in Sideout.`),'button play-accent');
   if(data.duo||connected.duo){invite.disabled=true;invite.title=alreadyPartner?'This player is already your duo.':'Both players must be free to form a duo.';}
   actions.append(invite);
-  const challenge=mutableButton('Challenge their duo ↗',()=>runAction('/api/matches',{playerCode:player.code},'Challenge sent. A player on the other duo can accept it.'),'button button-black');
+  const challenge=mutableButton('Challenge their duo ↗',()=>openMatchSettings(player),'button button-black');
   if(!data.duo||!connected.duo||alreadyPartner){challenge.disabled=true;challenge.title='Both sides need a duo to play a doubles match.';}
   actions.append(challenge);target.append(actions);
   if(alreadyPartner)target.append(el('p','play-helper',`${player.name} is already your teammate.`));
   else if(data.duo&&connected.duo)target.append(el('p','play-duo-meta',`Your duo: ${average(data.duo.players)} MMR · Their duo: ${average(connected.duo.players)} MMR`));
   else if(!data.duo)target.append(el('p','play-helper','Form your duo first, then scan a player from another duo to challenge them.'));
   else target.append(el('p','play-helper','This player needs a teammate before you can challenge their duo.'));
+ }
+ function closeMatchSettings(){if(!busy){challengeTarget=null;settingsDialog.close();}}
+ function settingsError(message){byId('match-settings-error').textContent=message||'';byId('match-settings-error').hidden=!message;}
+ function openMatchSettings(player){
+  if(busy||!opposingDuoFound()||settingsDialog.open)return;
+  challengeTarget={code:player.code,ownDuoId:data.duo.id,opponentDuoId:connected.duo.id};settingsError('');
+  byId('match-settings-best-of').value=byId('match-settings-best-of').value||'3';
+  byId('match-settings-points').value=byId('match-settings-points').value||'11';
+  byId('match-settings-win-by').value=byId('match-settings-win-by').value||'2';
+  settingsDialog.showModal();
+ }
+ async function sendChallenge(event){
+  event.preventDefault();if(busy||!challengeTarget)return;
+  const target=challengeTarget;settingsError('');error('');
+  let format;
+  try{format=normalizeMatchFormat({bestOf:Number(byId('match-settings-best-of').value),pointsToWin:Number(byId('match-settings-points').value),winBy:Number(byId('match-settings-win-by').value)});}catch(problem){settingsError(problem.message);return;}
+  setBusy(true);
+  try{
+   if(refreshing)await refreshing;
+   if(!opposingDuoFound()||connected.player.code!==target.code||data.duo.id!==target.ownDuoId||connected.duo.id!==target.opponentDuoId)throw new Error('The duos changed. Close this window and find the other duo again.');
+   await applyData(await api('/api/matches',{playerCode:target.code,format}));
+   challengeTarget=null;settingsDialog.close();status('Challenge sent with your match settings. The other duo can accept it in the popup.');
+  }catch(problem){settingsError(problem.message);}
+  finally{setBusy(false);render();}
  }
  function renderDuo(){
   const target=byId('my-duo');target.replaceChildren();
@@ -144,16 +176,63 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
    const rating=el('div','play-team-average');rating.append(el('span','','TEAM AVERAGE'),el('strong','',`${average(data.duo.players)} MMR`));target.append(rating);
    const actions=el('div','play-actions');actions.append(mutableButton('Leave this duo',()=>runAction('/api/duos/leave',{},'You left the duo. Scan a player to find your next teammate.')));target.append(actions);
   }else{const empty=el('p','play-empty');empty.append(el('strong','','Two is a team.'),document.createTextNode(' Create a duo invite QR for a teammate to scan and join automatically. Player-code invitations still need the other player to accept.'));target.append(empty);}
-  const invitations=byId('duo-invitations');invitations.replaceChildren();
-  for(const invitation of data.invitations||[]){
-   const card=el('div','duo-invite');card.append(el('div','eyebrow','DUO INVITATION'),person(invitation.from));
-   const actions=el('div','play-actions');actions.append(mutableButton('Accept duo ↗',()=>runAction(`/api/duos/${encodeURIComponent(invitation.id)}/respond`,{accept:true},`You and ${invitation.from.name} are a duo. Scan another team to play.`),'button play-accent'),mutableButton('Decline',()=>runAction(`/api/duos/${encodeURIComponent(invitation.id)}/respond`,{accept:false},'Duo invitation declined.')));card.append(actions);invitations.append(card);
-  }
+  const pending=pendingInvitations();
+  if(pending.length){const actions=el('div','play-actions');actions.append(mutableButton('View duo invitation',()=>showInvitations(true)));target.append(el('p','play-helper',`${pending.length} pending duo invitation${pending.length===1?'':'s'}.`),actions);}
  }
- function renderMatch(match){
+ function pendingInvitations(){return data&&!data.duo?(data.invitations||[]).filter(invitation=>invitation.id&&invitation.from&&(!invitation.expiresAt||new Date(invitation.expiresAt).getTime()>now())):[];}
+ function pendingChallenges(){
+  return(data?.matches||[]).filter(match=>{
+   if(!match?.id||match.status!=='pending'||!fullDuo({id:match.id,players:match.teams?.a})||!fullDuo({id:match.id,players:match.teams?.b}))return false;
+   if(!includesMe(match.teams.a)&&!includesMe(match.teams.b))return false;
+   const ownSide=ownedSide(match),otherSide=ownSide==='a'?'b':'a';
+   if(match.teams[ownSide].some(player=>player.id===match.createdBy)||!match.teams[otherSide].some(player=>player.id===match.createdBy))return false;
+   const expiresAt=match.expiresAt??(match.createdAt!=null?new Date(match.createdAt).getTime()+86400000:null);
+   return expiresAt==null||new Date(expiresAt).getTime()>now();
+  });
+ }
+ function pendingRequests(){return[...pendingInvitations().map(invitation=>({id:`duo:${invitation.id}`,invitation})),...pendingChallenges().map(match=>({id:`match:${match.id}`,match}))];}
+ function dismissInvitations(){
+  if(busy)return;
+  presentedInvitations.forEach(id=>dismissedInvitations.add(id));invitationDialog.close();
+ }
+ function showInvitations(force=false){
+  const pending=pendingRequests();
+  if(!pending.length){if(invitationDialog.open)invitationDialog.close();return;}
+  if(document.hidden||!getAvatarCreated())return;
+  if(!invitationDialog.open){
+   if(busy||!force&&pending.every(invitation=>dismissedInvitations.has(invitation.id)))return;
+   const otherDialog=document.querySelector('dialog[open]');if(otherDialog&&otherDialog!==invitationDialog)return;
+   invitationError.textContent='';invitationError.hidden=true;
+   invitationDialog.showModal();
+  }
+  presentedInvitations=pending.map(invitation=>invitation.id);
+ }
+ function renderInvitations(){
+  const pending=pendingRequests(),signature=JSON.stringify(pending);
+  if(signature!==invitationSignature){
+   const invitations=byId('duo-invitations');
+   const focusedIndex=invitationDialog.open?[...invitations.querySelectorAll('button')].indexOf(document.activeElement):-1,focusedId=presentedInvitations[Math.floor(focusedIndex/2)];
+   invitationSignature=signature;
+   invitations.replaceChildren();
+   const challengesOnly=pending.length>0&&pending.every(request=>request.match),hasChallenges=pending.some(request=>request.match);
+   byId('duo-invitation-heading').textContent=challengesOnly?'You’ve been challenged.':hasChallenges?'Ready to play?':'Team up?';
+   byId('duo-invitation-description').textContent=challengesOnly?'Another duo is ready for a game. Accept when all four players are ready.':hasChallenges?'Your next teammate or next game is waiting. Respond below.':'You’ve been invited to a duo. Pick your teammate and get ready for your next game.';
+   for(const request of pending){
+    if(request.match){invitations.append(renderMatch(request.match,{popup:true}));continue;}
+    const invitation=request.invitation;
+    const card=el('div','duo-invite');card.append(el('div','eyebrow','DUO INVITATION'),person(invitation.from));
+    const actions=el('div','play-actions');actions.append(mutableButton('Accept duo ↗',()=>runAction(`/api/duos/${encodeURIComponent(invitation.id)}/respond`,{accept:true},`You and ${invitation.from.name} are a duo. Scan another team to play.`),'button play-accent'),mutableButton('Decline',()=>runAction(`/api/duos/${encodeURIComponent(invitation.id)}/respond`,{accept:false},'Duo invitation declined.')));card.append(actions);invitations.append(card);
+   }
+   if(focusedIndex>=0&&!busy){const index=pending.findIndex(invitation=>invitation.id===focusedId);invitations.querySelectorAll('button')[index<0?0:index*2+focusedIndex%2]?.focus();}
+  }
+  invitationDialog.querySelectorAll('button').forEach(button=>button.disabled=busy);
+  showInvitations();
+ }
+ function renderMatch(match,{popup=false}={}){
   const card=el('article','play-match'),top=el('div','play-match-top');
-  const labels={pending:'CHALLENGE SENT',active:'READY TO PLAY',completed:'RESULT RECORDED',cancelled:'CANCELLED'};
+  const labels={pending:popup?'DUO CHALLENGE':'CHALLENGE SENT',active:'READY TO PLAY',completed:'RESULT RECORDED',cancelled:'CANCELLED'};
   top.append(el('span',`play-match-status ${match.status}`,labels[match.status]||match.status),el('span','',shortDate(match.completedAt||match.createdAt)));card.append(top);
+  if(match.format)card.append(el('p','play-match-format',`Best of ${match.format.bestOf} · ${match.format.pointsToWin} points · Win by ${match.format.winBy}`));
   const teams=el('div','play-match-teams');
   for(const side of ['a','b']){
    if(side==='b')teams.append(el('div','play-versus','VS'));
@@ -165,27 +244,75 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
    teams.append(team);
   }
   card.append(teams);
+  if(match.scores?.length){
+   const scores=el('div','play-set-results');scores.append(el('p','',`Set scores · ${includesMe(match.teams.a)?'Your duo':'Other duo'} / ${includesMe(match.teams.b)?'Your duo':'Other duo'}`));
+   match.scores.forEach((score,index)=>scores.append(el('span','',`Set ${index+1} · ${score.a}–${score.b}`)));card.append(scores);
+  }
   const actions=el('div','play-match-actions');
   if(match.status==='pending'){
    const sentByMySide=match.teams[ownedSide(match)].some(player=>player.id===match.createdBy);
    actions.append(el('p','',sentByMySide?'Waiting for a player on the other duo to accept your challenge.':'Your duo has been challenged. Accept when all four players are ready.'));
    const buttons=el('div','play-actions');
    if(sentByMySide)buttons.append(mutableButton('Cancel challenge',()=>runAction(`/api/matches/${encodeURIComponent(match.id)}/cancel`,{},'Challenge cancelled.')));
-   else buttons.append(mutableButton('Accept match ↗',()=>runAction(`/api/matches/${encodeURIComponent(match.id)}/respond`,{accept:true},'Match accepted. Play your game, then record the winner.'),'button play-accent'),mutableButton('Decline',()=>runAction(`/api/matches/${encodeURIComponent(match.id)}/respond`,{accept:false},'Challenge declined.')));
+   else if(popup)buttons.append(mutableButton('Accept match ↗',()=>runAction(`/api/matches/${encodeURIComponent(match.id)}/respond`,{accept:true},'Match accepted. Play your game, then record the winner.'),'button play-accent'),mutableButton('Decline',()=>runAction(`/api/matches/${encodeURIComponent(match.id)}/respond`,{accept:false},'Challenge declined.')));
+   else if(pendingChallenges().some(challenge=>challenge.id===match.id))buttons.append(mutableButton('View challenge',()=>showInvitations(true),'button play-accent'));
    actions.append(buttons);
   }else if(match.status==='active'){
+   if(match.format)actions.append(renderScoreForm(match));
+   else{
    const form=el('form','play-result-form'),label=el('label','', 'Who won this match?'),select=el('select');select.id=`winner-${match.id}`;select.required=true;select.disabled=busy;label.htmlFor=select.id;
    const empty=el('option','','Choose the winning duo');empty.value='';select.append(empty);
    for(const side of ['a','b']){const option=el('option','',`${includesMe(match.teams[side])?'Your duo':'Other duo'} · ${sideName(match.teams[side])}`);option.value=side;select.append(option);}
    select.value=winnerChoices.get(match.id)||'';select.addEventListener('change',()=>winnerChoices.set(match.id,select.value));
    const row=el('div'),button=el('button','button button-black','Record result ↗');button.type='submit';button.disabled=busy;row.append(select,button);form.append(label,row,el('p','play-result-note','One submission updates all four players immediately. Check the winner before recording.'));
    form.addEventListener('submit',event=>{event.preventDefault();if(!select.value||busy)return;runAction(`/api/matches/${encodeURIComponent(match.id)}/result`,{winnerSide:select.value},'Result recorded. All four player ratings have been updated.');});actions.append(form);
+   }
    const cancellation=el('div','play-actions');cancellation.append(mutableButton('Cancel game',()=>runAction(`/api/matches/${encodeURIComponent(match.id)}/cancel`,{},'Game cancelled. All four ratings stay the same.')));actions.append(cancellation,el('p','play-result-note','Game not played? Cancel it without changing ratings.'));
   }else if(match.status==='completed'){
    const reporter=[...match.teams.a,...match.teams.b].find(player=>player.id===match.reportedBy);
    actions.append(el('p','',`Recorded by ${reporter?.name||'a player'}${shortDate(match.completedAt)?` · ${shortDate(match.completedAt)}`:''}.`));
   }else actions.append(el('p','','This match was cancelled. Scan a duo to start another.'));
   card.append(actions);return card;
+ }
+ function renderScoreForm(match){
+  const format=normalizeMatchFormat(match.format),form=el('form','play-result-form play-score-form');form.id=`result-${match.id}`;form.noValidate=true;
+  let draft=scoreDrafts.get(match.id);
+  if(!draft){draft=Array.from({length:format.bestOf},()=>({a:'',b:''}));scoreDrafts.set(match.id,draft);}
+  const problem=el('p','play-error play-score-error',scoreErrors.get(match.id)||'');problem.id=`score-error-${match.id}`;problem.hidden=!scoreErrors.has(match.id);problem.setAttribute('role','alert');
+  const summary=el('p','play-score-summary');summary.setAttribute('role','status');summary.setAttribute('aria-live','polite');
+  const readScores=()=>{
+   const scores=[];let blank=false;
+   for(const [index,score]of draft.entries()){
+    const a=score.a.trim(),b=score.b.trim();
+    if(a===''&&b===''){blank=true;continue;}
+    if(a===''||b==='')throw new TypeError(`Enter both scores for set ${index+1}.`);
+    if(blank)throw new TypeError('Enter the set scores in order. Leave only unplayed sets blank.');
+    scores.push({a:Number(a),b:Number(b)});
+   }
+   return scores;
+  };
+  const updateSummary=()=>{try{const winner=validateMatchScores(format,readScores());summary.textContent=`${includesMe(match.teams[winner])?'Your duo wins':'The other duo wins'} this match.`;}catch{summary.textContent=`First duo to win ${Math.floor(format.bestOf/2)+1} ${format.bestOf===1?'set':'sets'}. Leave unplayed sets blank.`;}};
+  form.append(el('h3','','Enter the set scores.'));
+  for(let index=0;index<format.bestOf;index++){
+   const set=el('fieldset','play-score-set'),row=el('div','play-score-inputs');set.append(el('legend','',`Set ${index+1}`));
+   for(const side of ['a','b']){
+    const label=el('label','',includesMe(match.teams[side])?'Your duo':'Other duo'),input=el('input','play-set-score');input.type='number';input.min='0';input.max='99';input.step='1';input.inputMode='numeric';input.placeholder='—';input.id=`score-${match.id}-${index}-${side}`;input.name=`scores[${index}][${side}]`;input.value=draft[index][side];input.disabled=busy;label.htmlFor=input.id;
+    input.addEventListener('focus',()=>{lastScoreFocusId=input.id;});
+    input.addEventListener('input',()=>{lastScoreFocusId=input.id;draft[index][side]=input.value;scoreErrors.delete(match.id);problem.hidden=true;problem.textContent='';updateSummary();});label.append(input);row.append(label);
+   }
+   set.append(row);form.append(set);
+  }
+  const button=el('button','button button-black','Record result ↗');button.type='submit';button.disabled=busy;
+  form.append(summary,problem,button,el('p','play-result-note','Check every set before recording. The winner is calculated from the scores. MMR updates once for the whole match.'));updateSummary();
+  form.addEventListener('submit',event=>{
+   event.preventDefault();if(busy)return;
+   let scores;
+   try{scores=readScores();validateMatchScores(format,scores);}catch(issue){scoreErrors.set(match.id,issue.message);problem.textContent=issue.message;problem.hidden=false;return;}
+   scoreErrors.delete(match.id);
+   const retryFocus=lastScoreFocusId?.startsWith(`score-${match.id}-`)?lastScoreFocusId:`score-${match.id}-0-a`;
+   return runAction(`/api/matches/${encodeURIComponent(match.id)}/result`,{scores},'Set scores recorded. All four ratings have been updated once for this match.',message=>{scoreErrors.set(match.id,message);scoreRetryFocusId=retryFocus;});
+  });
+  return form;
  }
  function renderMatches(){
   const target=byId('play-matches');target.replaceChildren();
@@ -197,10 +324,13 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
  }
  function render(){
   if(!data)return;
+  const focusedScoreId=document.activeElement?.tagName==='INPUT'&&document.activeElement.id?.startsWith('score-')?document.activeElement.id:scoreRetryFocusId;
+  renderInvitations();
   if(data.duo){duoInvite=null;showDuoQr=false;}
-  const signature=JSON.stringify([data,connected,duoInvite,showDuoQr,busy,duoInvite?new Date(duoInvite.expiresAt).getTime()>now():false]);
+  const signature=JSON.stringify([data,connected,duoInvite,showDuoQr,busy,invitationSignature,duoInvite?new Date(duoInvite.expiresAt).getTime()>now():false]);
   if(signature===renderSignature)return;
   renderSignature=signature;renderIdentity();renderConnected();renderDuo();renderMatches();
+  scoreRetryFocusId=null;if(focusedScoreId&&!document.querySelector('dialog[open]'))byId(focusedScoreId)?.focus();
  }
  async function refresh({quiet=false,maxAge=0}={}){
   if(!getAvatarCreated()||busy&&data)return;
@@ -209,7 +339,7 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   if(!quiet){error('');status('Checking your court connections…');}
   byId('refresh-play').disabled=true;
   const connectedRead=readConnected();
-  refreshing=(async()=>{try{await applyData(await api('/api/play'),connectedRead);if(!quiet)status('Connections up to date.');}catch(problem){if(!quiet){error(problem.message);status('');}}finally{refreshing=null;byId('refresh-play').disabled=busy;}})();
+  refreshing=(async()=>{try{await applyData(await api('/api/play'),connectedRead);if(!quiet)status('Connections up to date.');}catch(problem){if(!quiet){error(problem.message);status('');}}finally{refreshing=null;byId('refresh-play').disabled=busy;render();}})();
   return refreshing;
  }
  async function lookup(input){
@@ -276,18 +406,24 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
  byId('copy-player-code').addEventListener('click',async()=>{if(!data)return;try{await navigator.clipboard.writeText(data.player.code);status('Player code copied. Share it with your court crew.');}catch{status(`Your player code is ${data.player.code}. Select and copy it above.`);}});
  byId('scan-player').addEventListener('click',openScanner);byId('use-player-photo').addEventListener('click',openPhoto);byId('scan-close').addEventListener('click',closeScanner);
  dialog.addEventListener('close',stopCamera);dialog.addEventListener('cancel',stopCamera);
+ byId('duo-invitation-close').addEventListener('click',dismissInvitations);
+ invitationDialog.addEventListener('cancel',event=>{event.preventDefault();dismissInvitations();});
+ byId('match-settings-close').addEventListener('click',closeMatchSettings);
+ settingsDialog.addEventListener('cancel',event=>{event.preventDefault();closeMatchSettings();});
+ byId('match-settings-form').addEventListener('submit',sendChallenge);
+ document.addEventListener('close',()=>showInvitations(),true);
  byId('scan-file').addEventListener('change',event=>scanFile(event.target.files?.[0]));
  const activePage=()=>document.querySelector('.page.active')?.id;
- const visible=()=>['profile','rating','play'].includes(activePage())&&getAvatarCreated()&&!document.hidden;
+ const visible=()=>['profile','rating','play','locker','friends','courts','leaderboard'].includes(activePage())&&getAvatarCreated()&&!document.hidden;
  const stopPolling=()=>{if(poll!==null){clearInterval(poll);poll=null;}};
  const startPolling=()=>{if(visible()&&poll===null)poll=setInterval(()=>{if(visible()&&!busy&&!lookingUp&&!dialog.open)refresh({quiet:true});},pollInterval);};
  window.addEventListener('pagehide',()=>{closeScanner();stopPolling();});
- window.addEventListener('pageshow',event=>{if(event.persisted){startPolling();if(visible())refresh({quiet:true,maxAge:pollInterval});}});
- document.addEventListener('visibilitychange',()=>{stopPolling();if(document.hidden)closeScanner();else{startPolling();if(visible())refresh({quiet:true,maxAge:pollInterval});}});
+ window.addEventListener('pageshow',event=>{if(event.persisted){startPolling();if(visible()){showInvitations();refresh({quiet:true,maxAge:pollInterval});}}});
+ document.addEventListener('visibilitychange',()=>{stopPolling();if(document.hidden)closeScanner();else{startPolling();if(visible()){showInvitations();refresh({quiet:true,maxAge:pollInterval});}}});
  async function handleNavigation(page){
   if(page!=='play')closeScanner();
-  if(!['profile','rating','play'].includes(page)){stopPolling();return;}
-  startPolling();await refresh({quiet:Boolean(data),maxAge:pollInterval});
+  if(!['profile','rating','play','locker','friends','courts','leaderboard'].includes(page)){stopPolling();return;}
+  startPolling();await refresh({quiet:Boolean(data),maxAge:pollInterval});showInvitations();
   if(page==='play')await handleDeepLink();
  }
  startPolling();

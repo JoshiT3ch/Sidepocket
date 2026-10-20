@@ -221,6 +221,43 @@ test('duo and match actions preserve server-authoritative rating and ownership c
   }
 });
 
+test('formatted match creation forwards selected rules while old challenges keep their original RPC overload',async()=>{
+ const {service,calls}=fixture({rpcData:{matches:[]}});
+ for(const format of [{bestOf:3,pointsToWin:11,winBy:2},{bestOf:1,pointsToWin:21,winBy:1},{bestOf:5,pointsToWin:15,winBy:2}]){
+  await service.request('/api/matches',post({playerCode,format,userId:'ignored',rating:9999,winnerSide:'a'}));
+  assert.deepEqual(calls.at(-1),['rpc','sideout_match_create',{p_code:playerCode,p_format:format}]);
+ }
+ await service.request('/api/matches',post({playerCode}));
+ assert.deepEqual(calls.at(-1),['rpc','sideout_match_create',{p_code:playerCode}]);
+ for(const format of [null,{bestOf:2,pointsToWin:10,winBy:5}]){
+  await service.request('/api/matches',post({playerCode,format}));
+  assert.deepEqual(calls.at(-1),['rpc','sideout_match_create',{p_code:playerCode,p_format:format}],'explicit invalid rules must reach server validation without silently becoming a legacy match');
+ }
+});
+
+test('scored result RPC forwards set scores and only an explicit winner assertion, preserving legacy winner-only results',async()=>{
+ const {service,calls}=fixture({rpcData:{matches:[]}}),scores=[{a:11,b:7},{a:9,b:11},{a:12,b:10}];
+ await service.request(`/api/matches/${id}/result`,post({scores,delta:9999,userId:'ignored',format:{bestOf:1,pointsToWin:21,winBy:1}}));
+ assert.deepEqual(calls.at(-1),['rpc','sideout_match_result',{p_id:id,p_scores:scores}]);
+ await service.request(`/api/matches/${id}/result`,post({scores,winnerSide:'a'}));
+ assert.deepEqual(calls.at(-1),['rpc','sideout_match_result',{p_id:id,p_scores:scores,p_winner:'a'}]);
+ await service.request(`/api/matches/${id}/result`,post({winnerSide:'b',delta:9999}));
+ assert.deepEqual(calls.at(-1),['rpc','sideout_match_result',{p_id:id,p_winner:'b'}]);
+ for(const scores of [null,[],[{a:11,b:'7'}]]){
+  await service.request(`/api/matches/${id}/result`,post({scores}));
+  assert.deepEqual(calls.at(-1),['rpc','sideout_match_result',{p_id:id,p_scores:scores}],'invalid explicit scores must not fall back to the winner-only overload');
+ }
+});
+
+test('local formatted match transport preserves exact rules and scores in the existing authenticated routes',async()=>{
+ const calls=[],format={bestOf:3,pointsToWin:11,winBy:2},scores=[{a:11,b:7},{a:9,b:11},{a:12,b:10}];
+ const service=createService({provider:'local'},{fetchImpl:async(...input)=>{calls.push(input);return{ok:true,status:200,json:async()=>({matches:[]})};}});
+ for(const [route,body]of [['/api/matches',{playerCode,format}],[`/api/matches/${id}/result`,{scores}]]){
+  await service.request(route,post(body));const [path,options]=calls.at(-1);
+  assert.equal(path,route);assert.equal(options.credentials,'same-origin');assert.equal(options.headers['X-Sideout-Request'],'1');assert.deepEqual(JSON.parse(options.body),body);
+ }
+});
+
 test('leaderboard uses only the authenticated fixed RPC and ignores client-chosen ratings or identity',async()=>{
   const leaderboard={entries:[],me:{rank:null,player:{id,rating:1200,games:0}},rankedPlayers:0,limit:100};
   const {service,calls}=fixture({rpcData:leaderboard});

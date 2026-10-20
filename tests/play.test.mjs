@@ -7,6 +7,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import net from 'node:net';
 import {DatabaseSync} from 'node:sqlite';
+import {createPlayStore} from '../play-store.mjs';
 
 test('QR duos and server-owned doubles ratings',{timeout:60000},async t=>{
  const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -143,7 +144,7 @@ test('QR duos and server-owned doubles ratings',{timeout:60000},async t=>{
  await t.test('a doubles challenge reserves all four players and the opposing side accepts',async()=>{
   write(db=>{db.prepare('UPDATE play_players SET rating=1700 WHERE user_id=?').run(a.id);db.prepare('UPDATE play_players SET rating=1500 WHERE user_id=?').run(b.id);});
   const result=await post(a,'/api/matches',{playerCode:c.code,rating:5000});assert.equal(result.status,201);match=result.json.matches[0];
-  assert.equal(match.status,'pending');assert.deepEqual(match.preview,{a:22,b:38});assert.equal(match.teams.a.length,2);assert.equal(match.teams.b.length,2);
+  assert.equal(match.status,'pending');assert.deepEqual(match.preview,{a:20,b:40});assert.equal(match.teams.a.length,2);assert.equal(match.teams.b.length,2);
   assert.equal((await post(a,'/api/matches',{playerCode:c.code})).status,409);
   assert.equal((await post(b,'/api/duos/leave')).status,409);
   assert.equal((await post(c,'/api/duos/leave')).status,409);
@@ -159,12 +160,12 @@ test('QR duos and server-owned doubles ratings',{timeout:60000},async t=>{
   assert.equal((await post(a,`/api/matches/${match.id}/result`,{winnerSide:'wrong'})).status,400);
   const completed=await post(c,`/api/matches/${match.id}/result`,{winnerSide:'b',deltas:[{playerId:c.id,after:5000}]});assert.equal(completed.status,200);
   const game=completed.json.matches.find(item=>item.id===match.id);assert.equal(game.status,'completed');assert.equal(game.reportedBy,c.id);assert.equal(game.winnerSide,'b');assert.ok(game.completedAt);
-  assert.deepEqual(game.deltas.map(item=>item.delta),[-38,-38,38,38]);
-  for(const [actor,rating,win]of [[a,1662,0],[b,1462,0],[c,1238,1],[d,1238,1]]){const play=await view(actor);assert.equal(play.player.rating,rating);assert.equal(play.player.games,1);assert.equal(play.player.wins,win);assert.equal(play.history[0].id,match.id);}
+  assert.deepEqual(game.deltas.map(item=>item.delta),[-40,-40,40,40]);
+  for(const [actor,rating,win]of [[a,1660,0],[b,1460,0],[c,1240,1],[d,1240,1]]){const play=await view(actor);assert.equal(play.player.rating,rating);assert.equal(play.player.games,1);assert.equal(play.player.wins,win);assert.equal(play.history[0].id,match.id);}
   const demo=(await request('/api/profile',{cookie:a.cookie})).json.profile;assert.equal(demo.rating,4999);assert.equal(demo.games,12);assert.equal(demo.wins,10);
-  assert.equal((await request('/api/profile',{method:'PUT',cookie:a.cookie,data:{rating:5000}})).status,200);assert.equal((await view(a)).player.rating,1662);
+  assert.equal((await request('/api/profile',{method:'PUT',cookie:a.cookie,data:{rating:5000}})).status,200);assert.equal((await view(a)).player.rating,1660);
   assert.equal((await post(d,`/api/matches/${match.id}/result`,{winnerSide:'a'})).status,409);
-  assert.equal((await post(a,`/api/matches/${match.id}/cancel`)).status,409);assert.equal((await view(a)).player.rating,1662);
+  assert.equal((await post(a,`/api/matches/${match.id}/cancel`)).status,409);assert.equal((await view(a)).player.rating,1660);
  });
  await t.test('expected wins add fewer points and completed games release the duos',async()=>{
   const created=await post(b,'/api/matches',{playerCode:d.code});assert.equal(created.status,201);const pending=created.json.matches.find(item=>item.status==='pending');assert.ok(pending.preview.a<pending.preview.b);
@@ -197,8 +198,139 @@ test('QR duos and server-owned doubles ratings',{timeout:60000},async t=>{
   await post(c,`/api/matches/${game.id}/respond`,{accept:true});const result=await post(b,`/api/matches/${game.id}/result`,{winnerSide:'a'});assert.equal(result.status,200);
   assert.equal((await view(a)).player.rating,5018);assert.equal((await view(b)).player.rating,5120);assert.deepEqual(result.json.matches.find(item=>item.id===game.id).deltas.slice(0,2).map(item=>item.delta),[20,20]);
  });
+ await t.test('a 100-point team gap previews and awards 40 for the underdog or 20 for the favorite',async()=>{
+  for(const [winnerSide,award,ratings]of [['a',40,[1240,1240,1260,1260]],['b',20,[1180,1180,1320,1320]]]){
+   write(db=>{for(const [actor,rating]of [[a,1200],[b,1200],[c,1300],[d,1300]])db.prepare('UPDATE play_players SET rating=? WHERE user_id=?').run(rating,actor.id);});
+   const before=await Promise.all([a,b,c,d].map(view));
+   const created=await post(a,'/api/matches',{playerCode:c.code});assert.equal(created.status,201);
+   const pending=created.json.matches.find(item=>item.status==='pending');assert.deepEqual(pending.preview,{a:40,b:20});
+   const accepted=await post(d,`/api/matches/${pending.id}/respond`,{accept:true});assert.equal(accepted.status,200);assert.deepEqual(accepted.json.matches.find(item=>item.id===pending.id).preview,{a:40,b:20});
+   const result=await post(b,`/api/matches/${pending.id}/result`,{winnerSide});assert.equal(result.status,200);
+   const complete=result.json.matches.find(item=>item.id===pending.id);assert.equal(complete.status,'completed');
+   assert.deepEqual(complete.deltas.map(item=>item.delta),[a,b,c,d].map((_,index)=>(index<2?'a':'b')===winnerSide?award:-award));
+   for(let index=0;index<4;index++){
+    const current=await view(actors[index]),won=(index<2?'a':'b')===winnerSide;
+    assert.equal(current.player.rating,ratings[index]);assert.equal(current.player.games,before[index].player.games+1);assert.equal(current.player.wins,before[index].player.wins+Number(won));
+    assert.deepEqual(current.history.find(item=>item.id===pending.id).deltas,complete.deltas);
+   }
+  }
+ });
+ await t.test('later results and repeated reads preserve historical awards recorded under the previous rule',async()=>{
+  const legacyDeltas=[
+   {playerId:a.id,before:1700,after:1662,delta:-38},{playerId:b.id,before:1500,after:1462,delta:-38},
+   {playerId:c.id,before:1200,after:1238,delta:38},{playerId:d.id,before:1200,after:1238,delta:38}
+  ];
+  const before=await Promise.all([a,b,c,d].map(view));
+  write(db=>db.prepare('UPDATE play_matches SET deltas=? WHERE id=?').run(JSON.stringify(legacyDeltas),match.id));
+  for(let index=0;index<4;index++){
+   const current=await view(actors[index]),legacy=current.history.find(item=>item.id===match.id);assert.deepEqual(current.player,before[index].player);assert.deepEqual(legacy.deltas,legacyDeltas);assert.equal(legacy.format,null);assert.equal(legacy.scores,null);
+  }
+  const created=await post(a,'/api/matches',{playerCode:c.code});assert.equal(created.status,201);const pending=created.json.matches.find(item=>item.status==='pending');assert.deepEqual(pending.preview,{a:40,b:20});
+  assert.equal((await post(c,`/api/matches/${pending.id}/respond`,{accept:true})).status,200);
+  assert.equal((await post(d,`/api/matches/${pending.id}/result`,{winnerSide:'a'})).status,200);
+  for(let index=0;index<4;index++){
+   const current=await view(actors[index]),refreshed=await view(actors[index]),won=index<2;
+   assert.equal(current.player.rating,before[index].player.rating+(won?40:-40));assert.equal(current.player.games,before[index].player.games+1);assert.equal(current.player.wins,before[index].player.wins+Number(won));
+   assert.deepEqual(current.history.find(item=>item.id===match.id).deltas,legacyDeltas);assert.deepEqual(refreshed,current);
+  }
+ });
+ await t.test('match settings are validated, persist for both teams and require valid set scores',async()=>{
+  const format={bestOf:3,pointsToWin:11,winBy:2},scores=[{a:11,b:7},{a:10,b:12},{a:15,b:13}];
+  const count=write(db=>db.prepare('SELECT COUNT(*) AS total FROM play_matches').get().total);
+  for(const invalid of [null,{},[],{...format,bestOf:'3'},{...format,bestOf:2},{...format,pointsToWin:12},{...format,winBy:3},{...format,extra:true}])assert.equal((await post(a,'/api/matches',{playerCode:c.code,format:invalid})).status,400);
+  assert.equal(write(db=>db.prepare('SELECT COUNT(*) AS total FROM play_matches').get().total),count);
+  const created=await post(a,'/api/matches',{playerCode:c.code,format});assert.equal(created.status,201);const pending=created.json.matches.find(item=>item.status==='pending');
+  assert.deepEqual(pending.format,format);assert.equal(pending.scores,null);assert.deepEqual((await view(c)).matches.find(item=>item.id===pending.id).format,format);
+  write(db=>{const row=db.prepare('SELECT format,scores FROM play_matches WHERE id=?').get(pending.id);assert.deepEqual(JSON.parse(row.format),format);assert.equal(row.scores,null);});
+  assert.equal((await post(a,`/api/matches/${pending.id}/result`,{scores})).status,409);
+  assert.equal((await post(e,`/api/matches/${pending.id}/respond`,{accept:true})).status,403);
+  assert.equal((await post(d,`/api/matches/${pending.id}/respond`,{accept:true})).status,200);
+  assert.equal((await post(e,`/api/matches/${pending.id}/result`,{scores})).status,403);
+  assert.equal((await request(`/api/matches/${pending.id}/result`,{method:'POST',data:{scores}})).status,401);
+  assert.equal((await post(a,`/api/matches/${pending.id}/settings`,{format:{bestOf:1,pointsToWin:21,winBy:1}})).status,404);
+  const before=await Promise.all([a,b,c,d].map(view));
+  const invalidResults=[
+   {winnerSide:'a'},{scores:null},{scores:[]},{scores:[{a:11,b:7}]},{scores:[{a:11,b:7},{a:9,b:11}]},
+   {scores:[{a:11,b:7},{a:11,b:7},{a:0,b:11}]},{scores:[{a:12,b:8},{a:11,b:7}]},
+   {scores:[{a:11,b:10},{a:11,b:7}]},{scores:[{a:'11',b:7},{a:11,b:7}]},{scores:[{a:11,b:7,extra:true},{a:11,b:7}]},
+   {scores,winnerSide:'b'},{scores,winnerSide:null},{format:null,winnerSide:'a'},
+   {format:{bestOf:1,pointsToWin:1,winBy:1},scores:[{a:1,b:0}],winnerSide:'a'}
+  ];
+  for(const result of invalidResults)assert.equal((await post(b,`/api/matches/${pending.id}/result`,result)).status,400,JSON.stringify(result));
+  for(let index=0;index<4;index++)assert.deepEqual((await view(actors[index])).player,before[index].player);
+  write(db=>{const row=db.prepare('SELECT status,format,scores,winner_side,deltas FROM play_matches WHERE id=?').get(pending.id);assert.equal(row.status,'active');assert.deepEqual(JSON.parse(row.format),format);assert.equal(row.scores,null);assert.equal(row.winner_side,null);assert.equal(row.deltas,null);});
+  const result=await post(b,`/api/matches/${pending.id}/result`,{scores,format:{bestOf:1,pointsToWin:21,winBy:1},deltas:[{playerId:a.id,after:9000}]});assert.equal(result.status,200);
+  const complete=result.json.matches.find(item=>item.id===pending.id);assert.equal(complete.winnerSide,'a');assert.deepEqual(complete.format,format);assert.deepEqual(complete.scores,scores);assert.equal(complete.reportedBy,b.id);
+  assert.deepEqual(complete.deltas.map(item=>item.delta),[pending.preview.a,pending.preview.a,-pending.preview.a,-pending.preview.a]);
+  for(let index=0;index<4;index++){
+   const current=await view(actors[index]),won=index<2;
+   assert.equal(current.player.rating,before[index].player.rating+(won?pending.preview.a:-pending.preview.a));assert.equal(current.player.games,before[index].player.games+1);assert.equal(current.player.wins,before[index].player.wins+Number(won));
+   const history=current.history.find(item=>item.id===pending.id);assert.deepEqual(history.scores,scores);assert.deepEqual(history.format,format);
+  }
+  write(db=>{const row=db.prepare('SELECT format,scores FROM play_matches WHERE id=?').get(pending.id);assert.deepEqual(JSON.parse(row.format),format);assert.deepEqual(JSON.parse(row.scores),scores);});
+  assert.equal((await post(d,`/api/matches/${pending.id}/result`,{scores})).status,409);assert.deepEqual((await view(a)).history.find(item=>item.id===pending.id).scores,scores);
+ });
+ await t.test('saving set scores and all four rating changes rolls back together on a storage failure',async()=>{
+  const format={bestOf:1,pointsToWin:15,winBy:2},scores=[{a:15,b:17}];
+  const created=await post(a,'/api/matches',{playerCode:c.code,format});assert.equal(created.status,201);const pending=created.json.matches.find(item=>item.status==='pending');
+  assert.equal((await post(c,`/api/matches/${pending.id}/respond`,{accept:true})).status,200);const before=await Promise.all([a,b,c,d].map(view));
+  write(db=>db.exec(`CREATE TRIGGER block_test_scores BEFORE UPDATE OF scores ON play_matches WHEN NEW.id='${pending.id}' BEGIN SELECT RAISE(ABORT,'test scores rollback'); END;`));
+  assert.equal((await post(d,`/api/matches/${pending.id}/result`,{scores,winnerSide:'b'})).status,500);
+  for(let index=0;index<4;index++){
+   const current=await view(actors[index]),game=current.matches.find(item=>item.id===pending.id);assert.deepEqual(current.player,before[index].player);assert.equal(game.status,'active');assert.equal(game.scores,null);assert.equal(game.deltas,null);assert.equal(game.winnerSide,null);assert.equal(game.reportedBy,null);assert.equal(game.completedAt,null);
+  }
+  write(db=>db.exec('DROP TRIGGER block_test_scores'));
+  const saved=await post(d,`/api/matches/${pending.id}/result`,{scores,winnerSide:'b'});assert.equal(saved.status,200);assert.deepEqual(saved.json.history.find(item=>item.id===pending.id).scores,scores);
+ });
+ await t.test('best-of-five games to 21 with win by one stop at the target and count as one rated match',async()=>{
+  const format={bestOf:5,pointsToWin:21,winBy:1},scores=[{a:21,b:20},{a:0,b:21},{a:21,b:0},{a:20,b:21},{a:19,b:21}];
+  const created=await post(a,'/api/matches',{playerCode:c.code,format});assert.equal(created.status,201);const pending=created.json.matches.find(item=>item.status==='pending');
+  assert.equal((await post(c,`/api/matches/${pending.id}/respond`,{accept:true})).status,200);const before=await Promise.all([a,b,c,d].map(view));
+  assert.equal((await post(d,`/api/matches/${pending.id}/result`,{scores:[{a:22,b:21},...scores.slice(1)]})).status,400);
+  const saved=await post(d,`/api/matches/${pending.id}/result`,{scores});assert.equal(saved.status,200);const complete=saved.json.history.find(item=>item.id===pending.id);assert.equal(complete.winnerSide,'b');assert.deepEqual(complete.format,format);assert.deepEqual(complete.scores,scores);
+  for(let index=0;index<4;index++){
+   const current=await view(actors[index]),won=index>=2;assert.equal(current.player.rating,before[index].player.rating+(won?pending.preview.b:-pending.preview.b));assert.equal(current.player.games,before[index].player.games+1);assert.equal(current.player.wins,before[index].player.wins+Number(won));
+  }
+ });
+ await t.test('legacy matches keep their winner-only result contract and cannot gain scores or settings',async()=>{
+  const created=await post(a,'/api/matches',{playerCode:c.code});assert.equal(created.status,201);const pending=created.json.matches.find(item=>item.status==='pending');assert.equal(pending.format,null);assert.equal(pending.scores,null);
+  assert.equal((await post(c,`/api/matches/${pending.id}/respond`,{accept:true})).status,200);
+  for(const result of [{winnerSide:'b',scores:[{a:0,b:11}]},{winnerSide:'b',scores:null},{winnerSide:'b',format:{bestOf:1,pointsToWin:11,winBy:2},scores:[{a:0,b:11}]}])assert.equal((await post(d,`/api/matches/${pending.id}/result`,result)).status,400);
+  const saved=await post(d,`/api/matches/${pending.id}/result`,{winnerSide:'b',format:{bestOf:5,pointsToWin:21,winBy:1}});assert.equal(saved.status,200);
+  const completed=saved.json.history.find(item=>item.id===pending.id);assert.equal(completed.winnerSide,'b');assert.equal(completed.format,null);assert.equal(completed.scores,null);
+ });
  await t.test('expired sessions cannot look up players or submit results',async()=>{
   write(db=>db.prepare('UPDATE sessions SET expires_at=0 WHERE user_id=?').run(e.id));
   assert.equal((await request('/api/players/'+a.code,{cookie:e.cookie})).status,401);assert.equal((await post(e,'/api/duos',{playerCode:a.code})).status,401);
  });
+});
+
+test('existing SQLite databases gain nullable match columns without changing historical results',async()=>{
+ const db=new DatabaseSync(':memory:');
+ try{
+  db.exec('CREATE TABLE users(id TEXT PRIMARY KEY,name TEXT NOT NULL); CREATE TABLE profiles(user_id TEXT PRIMARY KEY,data TEXT NOT NULL)');
+  let response,requestBody={};
+  class HttpError extends Error{constructor(status,message){super(message);this.status=status;}}
+  const options={db,session:()=>({id:'a'}),body:async()=>requestBody,send:(_res,status,json)=>{response={status,json};},HttpError,storedProfile:(_name,data)=>JSON.parse(data)};
+  createPlayStore(options);
+  const teams={a:[{id:'a',name:'Player a',rating:1700},{id:'b',name:'Player b',rating:1500}],b:[{id:'c',name:'Player c',rating:1200},{id:'d',name:'Player d',rating:1200}]};
+  const deltas=[{playerId:'a',before:1700,after:1662,delta:-38},{playerId:'b',before:1500,after:1462,delta:-38},{playerId:'c',before:1200,after:1238,delta:38},{playerId:'d',before:1200,after:1238,delta:38}];
+  for(const [index,delta]of deltas.entries()){
+   db.prepare('INSERT INTO users VALUES(?,?)').run(delta.playerId,`Player ${delta.playerId}`);db.prepare('INSERT INTO profiles VALUES(?,?)').run(delta.playerId,JSON.stringify({name:`Player ${delta.playerId}`,avatarCreated:true}));
+   db.prepare('INSERT INTO play_players(user_id,code,rating,games,wins) VALUES(?,?,?,?,?)').run(delta.playerId,`SO-${String(index+1).padStart(12,'0')}`,delta.after,1,index<2?0:1);
+  }
+  db.prepare('INSERT INTO play_duos VALUES(?,?,?,?,?)').run('old-a','a','b',1,null);db.prepare('INSERT INTO play_duos VALUES(?,?,?,?,?)').run('old-b','c','d',1,null);
+  db.prepare("INSERT INTO play_matches(id,status,duo_a,duo_b,player_a1,player_a2,player_b1,player_b2,teams,created_by,created_at,expires_at,reported_by,completed_at,winner_side,deltas) VALUES(?,'completed',?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run('old-match','old-a','old-b','a','b','c','d',JSON.stringify(teams),'a',1,86400001,'c',2,'b',JSON.stringify(deltas));
+  const before={...db.prepare('SELECT * FROM play_matches WHERE id=?').get('old-match')};
+  db.exec('ALTER TABLE play_matches DROP COLUMN format');db.exec('ALTER TABLE play_matches DROP COLUMN scores');
+  assert.ok(!db.prepare('PRAGMA table_info(play_matches)').all().some(column=>column.name==='format'));
+  createPlayStore(options);const handler=createPlayStore(options);
+  assert.deepEqual({...db.prepare('SELECT * FROM play_matches WHERE id=?').get('old-match')},before,'migration is idempotent and preserves the original row');
+  assert.equal(await handler({method:'GET'},{},new URL('http://test.invalid/api/play')),true);assert.equal(response.status,200);
+  const legacy=response.json.history[0];assert.equal(legacy.format,null);assert.equal(legacy.scores,null);assert.deepEqual(legacy.deltas,deltas);assert.equal(response.json.player.rating,1662);assert.equal(response.json.player.games,1);
+  const format={bestOf:3,pointsToWin:11,winBy:2};requestBody={playerCode:'SO-000000000003',format};
+  assert.equal(await handler({method:'POST'},{},new URL('http://test.invalid/api/matches')),true);assert.equal(response.status,201);
+  const pending=response.json.matches.find(item=>item.status==='pending');assert.deepEqual(pending.format,format);assert.equal(pending.scores,null);assert.deepEqual(response.json.history[0].deltas,deltas);assert.equal(response.json.player.rating,1662);
+  assert.deepEqual(JSON.parse(db.prepare('SELECT format FROM play_matches WHERE id=?').get(pending.id).format),format,'new settings persist after upgrading an existing database');
+ }finally{db.close();}
 });
