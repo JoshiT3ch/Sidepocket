@@ -39,7 +39,7 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
  const api=async(path,body)=>window.sideoutService.request(path,body!==undefined?{method:'POST',body:JSON.stringify(body)}:{});
  const person=(player,delta=null)=>{
   const row=el('div','play-person'),canvas=el('canvas');canvas.width=120;canvas.height=144;canvas.setAttribute('role','img');canvas.setAttribute('aria-label',`${player.name}'s pixel character`);
-  const copy=el('div','play-person-copy');copy.append(el('strong','',`${player.name}${isMine(player)?' · You':''}`),el('span','play-rating',`${player.rating} MMR`));
+  const copy=el('div','play-person-copy');copy.append(el('strong','',`${player.name}${isMine(player)?' · You':''}`),el('span','play-rating',`${player.rating} MMR`));if(player.isVerified===true)copy.append(el('span','player-verified','✓ Verified'));
   if(delta){copy.append(el('small',`play-rating-change${delta.delta<0?' negative':''}`,`${signed(delta.delta)} · ${delta.before} → ${delta.after}`));}
   row.append(canvas,copy);
   try{drawAvatar(canvas.getContext('2d'),52,133,1.25,{...(player.avatar||{}),name:player.name});}catch{canvas.setAttribute('aria-label',player.name);}

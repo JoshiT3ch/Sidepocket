@@ -413,3 +413,13 @@ test('logout revokes the current browser session and exposes no access or refres
   assert.deepEqual(await service.request('/api/auth/logout',post({})),{ok:true});
   assert.deepEqual(calls.at(-1),['signOut',{scope:'local'}]);
 });
+
+test('court booking actions use the fixed authenticated gateway with unchanged payloads',async()=>{
+  const {service,calls}=fixture();
+  for(const action of ['list','apply','review','reserve','cancel']){
+    const data={courtId:id,date:'2026-11-01',hour:8};
+    await service.request('/api/bookings',post({action,data}));
+    assert.deepEqual(calls.at(-1),['rpc','sideout_booking',{p_action:action,p_data:data}]);
+  }
+  await assert.rejects(service.request('/api/bookings'),{status:404});
+});

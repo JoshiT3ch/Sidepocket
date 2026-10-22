@@ -82,8 +82,8 @@ begin
     if result->'player'->>'id'=a::text then seen_a:=n; end if;
     if result->'player'->>'id'=b::text then seen_b:=n; end if;
     if result->'player'->>'id' in(newcomer::text,unfinished::text) then raise exception 'TEST: ineligible player ranked'; end if;
-    if (select pg_catalog.count(*) from pg_catalog.jsonb_object_keys(result->'player'))<>7 or
-       not(result->'player' ?& array['id','code','name','rating','games','wins','avatar']) or
+    if (select pg_catalog.count(*) from pg_catalog.jsonb_object_keys(result->'player'))<>8 or
+       not(result->'player' ?& array['id','code','name','rating','games','wins','avatar','isVerified']) or
        (select pg_catalog.count(*) from pg_catalog.jsonb_object_keys(result->'player'->'avatar'))<>12 or
        (result->'player'->'avatar') ?| array['email','token','history','avatarCreated','password_hash'] then raise exception 'TEST: private player data disclosed'; end if;
   end loop;

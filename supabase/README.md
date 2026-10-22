@@ -1,5 +1,7 @@
 # Supabase backend
 
+Court owner applications, protected verified-player entitlements, reviewer roles, and hourly reservations use `20261022160605_sideout_owner_court_bookings.sql`. Apply it before the bookings interface. The private definer function performs authentication and ownership checks; `public.sideout_booking` is an invoker gateway. New tables have RLS and no browser table access. Run `supabase/tests/bookings.sql` as a rollback-only acceptance fixture. Reviewer designation and manual verification setup are described in `admin/court-operations.md`; subscription payments are not enabled.
+
 The configured project remains **Sideout**, ref `pbfqudxyjklntneipjpq`. The canonical website is `https://sideout-valenciacity.vercel.app`, served by Vercel project `prj_wOFyOpHTDgn1VFBSIbeaqLWDqnFj` from the repository's `dist/` directory (Framework Preset **Other**, no install or build command, Output Directory `.`). The static browser client reads its public URL and publishable key from `dist/connection.js`; account and application data remain in the same Supabase project. This hosting change requires no database migration.
 
 ## Schema and API

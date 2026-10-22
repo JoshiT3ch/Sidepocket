@@ -39,7 +39,7 @@ export function initFriends({request=(path,options)=>window.sideoutService.reque
   const button=(label,callback,className='friend-button')=>{const node=make('button',className,label);node.type='button';node.disabled=mutating;node.addEventListener('click',callback);controls.add(node);return node;};
   function person(player){
     const row=make('div','friend-person'),canvas=make('canvas','friend-avatar');canvas.width=100;canvas.height=140;canvas.setAttribute('role','img');canvas.setAttribute('aria-label',`${player.name}’s pixel character`);
-    const copy=make('div','friend-person-copy');copy.append(make('strong','',player.name),make('span','',`${Number(player.rating).toLocaleString()} MMR`),make('small','friend-code',player.code));row.append(canvas,copy);
+    const copy=make('div','friend-person-copy');copy.append(make('strong','',player.name),make('span','',`${Number(player.rating).toLocaleString()} MMR`),make('small','friend-code',player.code));if(player.isVerified===true)copy.append(make('span','player-verified','✓ Verified'));row.append(canvas,copy);
     try{drawAvatar(canvas.getContext('2d'),47,131,1.2,{...(player.avatar||{}),name:player.name});}catch{canvas.setAttribute('aria-label',player.name);}
     return row;
   }

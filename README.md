@@ -58,6 +58,10 @@ The optional local SQLite mode retains its separate email/password forms and bac
 
 Male and female hairstyles have separate choices; both support six hair colors. The locker includes 40 clothing pieces across caps, shirts, shorts, and pants, with Nike and Adidas choices. Avatars and outfits are saved per account and appear on the profile and downloadable story card.
 
+## Court owners and bookings
+
+Open **Courts** to try **Court 1**, a free test listing, reserve one-hour slots in Philippine time, and manage bookings. Court owners apply with details, hours, rate, ownership information, and an optional photo. Only verified players can submit; a separate Sideout reviewer approves courts before booking opens. Planned verified membership is **PHP 100/month** with a profile checkmark. Subscription payments are not enabled. No real reviewer or membership is automatically assigned. See `docs/courts-plan.md` and `supabase/admin/court-operations.md` for details and operator setup.
+
 ## Friends
 
 Open **Friends** to add someone by their Sideout player code or player link. You can also find a player in **Play & QR** and choose **Add friend**. Only the invited player can accept or decline; the sender can cancel a pending request. Accepted friends appear on both accounts with their saved avatar, public player code, and current MMR. Either player can remove the friendship after an inline confirmation.
