@@ -21,6 +21,7 @@ function endpoint(path,options){
   if(path==='/api/profile'&&method==='GET')return{rpc:'sideout_profile',args:{},profile:true};
   if(path==='/api/profile'&&method==='PUT')return{rpc:'sideout_save_profile',args:{p_profile:body},save:true};
   if(path==='/api/play'&&method==='GET')return{rpc:'sideout_play',args:{}};
+  if(path==='/api/bookings'&&method==='POST')return{rpc:'sideout_booking',args:{p_action:body.action,p_data:body.data??{}}};
   if(path==='/api/leaderboard'&&method==='GET')return{rpc:'sideout_leaderboard',args:{}};
   if(path==='/api/friends'&&method==='GET')return{rpc:'sideout_friends',args:{}};
   if(path==='/api/friends/request'&&method==='POST')return{rpc:'sideout_friend_request',args:{p_code:body.playerCode}};

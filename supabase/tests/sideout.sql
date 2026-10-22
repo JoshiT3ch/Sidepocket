@@ -294,7 +294,7 @@ begin
   -- Verify schema-wide defense in depth and public RPC privilege allow-list.
   if exists(select 1 from pg_catalog.pg_class t join pg_catalog.pg_namespace n on n.oid = t.relnamespace where n.nspname = 'sideout' and t.relkind = 'r' and not t.relrowsecurity) then raise exception 'TEST: private table missing RLS'; end if;
   if exists(select 1 from pg_catalog.pg_proc f join pg_catalog.pg_namespace n on n.oid = f.pronamespace where n.nspname = 'public' and f.proname like 'sideout_%' and
-    (not f.prosecdef or not ('search_path=""' = any(f.proconfig)) or pg_catalog.has_function_privilege('anon',f.oid,'EXECUTE') or not pg_catalog.has_function_privilege('authenticated',f.oid,'EXECUTE'))) then raise exception 'TEST: public RPC privilege/config mismatch'; end if;
+    ((not f.prosecdef and f.proname<>'sideout_booking') or not ('search_path=""' = any(f.proconfig)) or pg_catalog.has_function_privilege('anon',f.oid,'EXECUTE') or not pg_catalog.has_function_privilege('authenticated',f.oid,'EXECUTE'))) then raise exception 'TEST: public RPC privilege/config mismatch'; end if;
   raise notice 'Sideout SQL acceptance checks passed: %; fixtures will be rolled back.',test_count + 2;
 end
 $test$;

@@ -110,7 +110,7 @@ test('Friends import that completes after pagehide cannot initialize a stale con
  finishImport({initFriends:()=>{creates++;return{handleNavigation:async()=>{},destroy(){}};}});
  await Promise.resolve();await Promise.resolve();assert.equal(creates,0);
  for(const fn of page.windowEvents.get('pageshow')||[])await fn({persisted:true});
- await Promise.resolve();await Promise.resolve();assert.equal(creates,1);
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(creates,1);
 });
 
 test('profile startup draws one visible avatar and defers locker, setup, story and effects work',async()=>{

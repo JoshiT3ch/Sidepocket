@@ -45,11 +45,23 @@ let playController=null;
 let playStarting=false;
 let leaderboardController=null;
 let leaderboardStarting=null;
-let courtsController=null;
-let courtsStarting=null;
 let friendsController=null;
 let friendsStarting=null;
 let friendsVersion=0;
+let bookingsController=null,bookingsStarting=null,bookingsVersion=0;
+async function startBookings(){
+  if(!state.avatarCreated)return;
+  if(bookingsController)return bookingsController.handleNavigation('courts');
+  if(bookingsStarting)return bookingsStarting;
+  const version=bookingsVersion;
+  bookingsStarting=(async()=>{
+    try{const {initBookings}=await import('./bookings.js');if(version!==bookingsVersion)return;bookingsController=initBookings();await bookingsController.handleNavigation(document.querySelector('.page.active')?.id||'profile');}
+    catch(error){if(version===bookingsVersion)toast(error.message||'Could not open court bookings. Please try again.');}
+    finally{if(version===bookingsVersion)bookingsStarting=null;}
+  })();return bookingsStarting;
+}
+window.addEventListener('pagehide',()=>{bookingsVersion++;bookingsController?.destroy();bookingsController=null;bookingsStarting=null;});
+window.addEventListener('pageshow',event=>{if(event.persisted&&document.querySelector('.page.active')?.id==='courts')startBookings();});
 async function startFriends(){
   if(!state.avatarCreated)return;
   if(friendsController)return friendsController.handleNavigation('friends');
@@ -64,19 +76,6 @@ async function startFriends(){
 }
 window.addEventListener('pagehide',()=>{friendsVersion++;friendsController?.destroy();friendsController=null;friendsStarting=null;});
 window.addEventListener('pageshow',event=>{if(event.persisted&&document.querySelector('.page.active')?.id==='friends')startFriends();});
-async function startCourts(){
-  if(!state.avatarCreated)return;
-  if(courtsController)return courtsController.handleNavigation('courts');
-  if(courtsStarting)return courtsStarting;
-  courtsStarting=(async()=>{
-    try{const {initCourts}=await import('./courts.js');courtsController=initCourts({onNavigate:navigate});await courtsController.handleNavigation(document.querySelector('.page.active')?.id||'profile');}
-    catch(error){toast(error.message||'Could not open courts. Please try again.');}
-    finally{courtsStarting=null;}
-  })();
-  return courtsStarting;
-}
-window.addEventListener('pagehide',()=>{courtsController?.destroy();courtsController=null;});
-window.addEventListener('pageshow',event=>{if(event.persisted&&document.querySelector('.page.active')?.id==='courts')startCourts();});
 async function startLeaderboard(){
   if(!state.avatarCreated)return;
   if(leaderboardController)return leaderboardController.refresh();
@@ -148,6 +147,8 @@ function renderHistory(){
   }
 }
 function render(){
+  const verified=account.profile.isVerified===true&&Date.parse(account.profile.verifiedUntil)>Date.now();
+  const badge=document.getElementById('profile-verified');if(badge)badge.hidden=!verified;
   renderChanged('player-name',state.name,()=>document.querySelectorAll('.player-name').forEach(e=>e.textContent=state.name.trim()||defaults.name));
   renderChanged('stats',[matchStats?.rating,matchStats?.games,matchStats?.wins],()=>{
     document.querySelectorAll('[data-rating]').forEach(e=>e.textContent=matchStats?.rating??'—');document.querySelectorAll('[data-rank]').forEach(e=>e.textContent=rank());
@@ -163,7 +164,7 @@ function render(){
   if(page==='rating')renderChanged('history',matchStats?.history||[],renderHistory);
   storyEditor?.refresh();
 }
-function navigate(page){if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard','courts','friends'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});render();if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();if(courtsController)Promise.resolve(courtsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='courts')startCourts();if(friendsController)Promise.resolve(friendsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='friends')startFriends();}
+function navigate(page){if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard','friends','courts'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});render();if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();if(friendsController)Promise.resolve(friendsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='friends')startFriends();if(bookingsController)Promise.resolve(bookingsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='courts')startBookings();}
 let storyEditor=null,storyStarting=null;
 let chosenBody=state.avatarCreated?state.bodyType:null;
 const setupHeight=document.getElementById('setup-height');

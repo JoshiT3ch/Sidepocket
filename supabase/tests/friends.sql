@@ -153,8 +153,8 @@ begin
     (select pg_catalog.count(*) from pg_catalog.jsonb_object_keys(entry)) <> 4 or
     not (entry ?& array['id','player','createdAt','presence']) or entry->'presence' <> 'null'::jsonb or
     pg_catalog.jsonb_typeof(entry->'createdAt') <> 'number' or
-    (select pg_catalog.count(*) from pg_catalog.jsonb_object_keys(entry->'player')) <> 7 or
-    not (entry->'player' ?& array['id','name','code','rating','games','wins','avatar']) or
+    (select pg_catalog.count(*) from pg_catalog.jsonb_object_keys(entry->'player')) <> 8 or
+    not (entry->'player' ?& array['id','name','code','rating','games','wins','avatar','isVerified']) or
     (entry->'player') ?| array['email','token','history','avatarCreated','raw_user_meta_data'] or
     (entry->'player'->'avatar') ?| array['email','token','history','avatarCreated'] then raise exception 'TEST: private fields disclosed or invalid snapshot'; end if;
   rejected := false;
