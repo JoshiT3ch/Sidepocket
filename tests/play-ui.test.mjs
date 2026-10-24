@@ -747,9 +747,22 @@ test('invalid settings are rejected before sending and newly received challenges
 
 test('saved format is shown in incoming challenges and normal match cards without inventing legacy rules',async()=>{
  for(const format of [matchFormat,{bestOf:1,pointsToWin:15,winBy:1},{bestOf:5,pointsToWin:21,winBy:2}])await withPlay({request:()=>challenged([challenge({format})])},async({nodes})=>{
-  const text=`Best of ${format.bestOf} · ${format.pointsToWin} points · Win by ${format.winBy}`;assert.ok(nodes['duo-invitations'].textContent.includes(text));assert.ok(nodes['play-matches'].textContent.includes(text));
+  const text=`${format.bestOf===1?'1 set':`Best of ${format.bestOf}`} · ${format.pointsToWin} points · Win by ${format.winBy}`;assert.ok(nodes['duo-invitations'].textContent.includes(text));assert.ok(nodes['play-matches'].textContent.includes(text));
  });
  for(const format of [null,undefined])await withPlay({request:()=>challenged([challenge({format})])},async({nodes})=>{assert.doesNotMatch(nodes['duo-invitations'].textContent,/Best of/);assert.doesNotMatch(nodes['play-matches'].textContent,/Best of/);});
+});
+
+test('one-set matches show one final-score pair and derive the winner from the entered score',async()=>{
+ let current=challenged([challenge({status:'active',format:{bestOf:1,pointsToWin:11,winBy:2}})]);
+ await withPlay({request:(path,body)=>{if(path.endsWith('/result'))current=challenged([challenge({status:'completed',format:{bestOf:1,pointsToWin:11,winBy:2},scores:body.scores,winnerSide:'a'})]);return current;}},async({nodes,calls,document})=>{
+  const form=document.getElementById('result-match-1');
+  assert.equal(form.querySelectorAll('input').length,2);
+  assert.match(form.textContent,/Enter the final score\./);assert.match(form.textContent,/Play to 11, win by 2/);
+  assert.equal(nodes['play-matches'].textContent.includes('Best of 1'),false);
+  setScore(document,'match-1',0,'a',11);setScore(document,'match-1',0,'b',7);await submitForm(form);
+  assert.deepEqual(calls.filter(call=>call.path.endsWith('/result')).map(call=>call.body),[{scores:[{a:11,b:7}]}]);
+  assert.match(nodes['play-matches'].textContent,/Final score/);
+ });
 });
 
 test('formatted score entry validates set rules and incomplete, partial, gapped or extra sets before any POST',async()=>{
