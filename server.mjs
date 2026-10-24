@@ -9,6 +9,7 @@ import {promisify} from 'node:util';
 import {DatabaseSync} from 'node:sqlite';
 import {createPlayStore} from './play-store.mjs';
 import {createFriendStore} from './friend-store.mjs';
+import {createRoomStore} from './room-store.mjs';
 import connection from './dist/connection.js';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
@@ -63,6 +64,7 @@ async function api(req,res,url){
  if(req.method!=='GET'){
    if(req.headers['x-sideout-request']!=='1'||!origins.has(req.headers.origin)||!String(req.headers['content-type']||'').startsWith('application/json'))throw new HttpError(403,'This request could not be verified. Refresh the page and try again.');
  }
+ if(await handleRooms(req,res,url))return;
  if(await handlePlay(req,res,url))return;
  if(await handleFriends(req,res,url))return;
  if(url.pathname==='/api/auth/session'&&req.method==='GET'){const current=session(req);return send(res,200,{user:current?userView(current):null});}
@@ -93,6 +95,7 @@ async function api(req,res,url){
  throw new HttpError(404,'Not found.');
 }
 const handlePlay=createPlayStore({db,session,body,send,HttpError,storedProfile});
+const handleRooms=createRoomStore({db,session,body,send,HttpError,players:handlePlay.players});
 const handleFriends=createFriendStore({db,session,body,send,HttpError,players:handlePlay.players});
 const server=http.createServer(async(req,res)=>{
  res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');

@@ -4,6 +4,14 @@ Court owner applications, protected verified-player entitlements, reviewer roles
 
 The configured project remains **Sideout**, ref `pbfqudxyjklntneipjpq`. The canonical website is `https://sideout-valenciacity.vercel.app`, served by Vercel project `prj_wOFyOpHTDgn1VFBSIbeaqLWDqnFj` from the repository's `dist/` directory (Framework Preset **Other**, no install or build command, Output Directory `.`). The static browser client reads its public URL and publishable key from `dist/connection.js`; account and application data remain in the same Supabase project. This hosting change requires no database migration.
 
+## Match room activation
+
+Apply `migrations/20261024052500_sideout_match_rooms.sql` after the existing match-scoring and court-booking migrations, before publishing the room interface. The migration is prepared locally and has not been applied to the live project.
+
+The authenticated `sideout_room(p_action text,p_data jsonb)` gateway supports get, create, slot, waiting, start, leave, and close. It stores one leader per room, four playing slots, and two to twelve waiting slots. Unique membership and slot keys plus room/player locks prevent double claims. Slot transfers are atomic. Only the leader can add slots, start, or close; active match participants cannot change slots. A leader in waiting can start the selected four players. Historical team references leave saved duo membership unchanged.
+
+The new private tables have RLS enabled, with no browser table or helper grants. Closing a room releases everyone. Apply this migration before using the updated operator account-deletion helper. Run `tests/rooms.sql` and `tests/delete-player-acceptance.sql` as rollback fixtures with the existing scoring regressions. Local SQLite and browser tests also exercise room QR decoding, competing slot choices, waiting rotation, scoring, and unrated waiting players.
+
 ## Schema and API
 
 The applied migration is `migrations/202610130001_sideout.sql` (migration name `sideout_accounts_and_doubles`). Do not run it again against the configured project. For a new, empty project, apply this migration once through the normal Supabase migration workflow before configuring the browser connection.
@@ -15,6 +23,7 @@ The private `sideout` schema contains profiles, players, duos, duo membership, i
 | `sideout_profile` | Read or initialize the current player's cosmetic profile |
 | `sideout_save_profile` | Validate and save the current player's cosmetics |
 | `sideout_play` | Read the current player's rating, duo, invitations, and matches |
+| `sideout_room` | Read, join, move slots, and manage a shared match room |
 | `sideout_leaderboard` | Read the top 100 rated players and the current player's position |
 | `sideout_player` | Look up a player by their public QR code |
 | `sideout_duo_invite` | Invite another player as a teammate |
@@ -39,7 +48,7 @@ Apply this forward migration with the matching application release before using 
 
 ### Match settings and set scores
 
-`migrations/20261020052413_sideout_match_scoring.sql` adds nullable `format` and `scores` to private matches and their public match/history views. Apply it after the linear rating migration and before releasing a client that sends settings or scores. It has been verified only in isolated PostgreSQL; it has not been applied to the live project.
+`migrations/20261020052413_sideout_match_scoring.sql` adds nullable `format` and `scores` to private matches and their public match/history views. It was applied to Sideout on October 22, 2026 as remote migration `20261022142643_sideout_match_scoring`, fixing the missing `sideout_match_create(p_code,p_format)` gateway. The migration and scoring suite first passed in a rollback-only rehearsal against the live schema; the complete suite passed again after application, with all fixture accounts and games rolled back. The private rating award helper remains unchanged; the separate linear rating migration is still pending. Scoring works with either award formula, and its tests derive the expected award from the configured helper.
 
 New formatted challenges use exactly `{"bestOf":3,"pointsToWin":11,"winBy":2}`-shaped JSON. `bestOf` accepts 1, 3, or 5; `pointsToWin` accepts 11, 15, or 21; `winBy` accepts 1 or 2. All three fields must be numeric integers, with no extra fields. The browser defaults to best of three, 11 points, win by two. The chosen format is fixed when the challenge is created and cannot be changed afterward.
 
@@ -51,6 +60,8 @@ New formatted challenges use exactly `{"bestOf":3,"pointsToWin":11,"winBy":2}`-s
 | `sideout_match_result(p_id uuid, p_scores jsonb, p_winner text default null)` | Derive the winner from the saved format and scores; an optional supplied winner must agree |
 
 The required `p_scores` argument distinguishes scored reporting from the legacy overload. The browser service passes `p_format` only when settings are present and `p_scores` only when set scores are present. Explicit null settings are rejected; omitting settings preserves legacy behavior. A formatted match rejects the winner-only gateway, while a legacy match continues to require a winner and rejects score reporting.
+
+Verified after deployment: both new gateway signatures exist; authenticated execution is granted, anonymous execution is denied, and no scoring fixture users remain. PostgREST's schema cache was refreshed. Advisor results retain the intentional private-schema/no-client-policy design and authenticated guarded SECURITY DEFINER gateways; see the existing RLS/gateway notice below. No unrelated migrations were applied.
 
 Scores are an ordered array such as `[{"a":11,"b":8},{"a":9,"b":11},{"a":12,"b":10}]`, using the match's saved `a` and `b` rosters. Each set contains only numeric integer `a` and `b` scores from 0 to 99. No ties, incomplete sets, unplayed overshoots, or sets after either duo wins a majority are allowed. Win-by-one sets end at the target with the other duo below it. Win-by-two sets end at the target when the loser is at least two behind, or exactly two above the loser after deuce: 11–9 and 12–10 are valid for 11/by-two; 12–0, 12–9, and 20–5 are not.
 

@@ -53,6 +53,8 @@ declare
   code_a text; code_b text; code_c text; code_d text; invite uuid; game uuid; legacy_game uuid;
   result jsonb; game_view jsonb; before_players jsonb; before_legacy jsonb; fmt jsonb := '{"bestOf":3,"pointsToWin":11,"winBy":2}';
   valid_scores jsonb := '[{"a":11,"b":8},{"a":9,"b":11},{"a":12,"b":10}]'; bad jsonb; rejected boolean;
+  expected_award integer := sideout.award(1200,1300);
+  expected_preview jsonb := pg_catalog.jsonb_build_object('a',sideout.award(1200,1300),'b',sideout.award(1300,1200));
 begin
   execute 'set local role anon';
   rejected := false;
@@ -114,7 +116,7 @@ begin
   result := public.sideout_match_create(p_code => code_c,p_format => fmt);
   select e.value into strict game_view from pg_catalog.jsonb_array_elements(result->'matches') e where e.value->>'status' = 'pending';
   game := (game_view->>'id')::uuid;
-  if game_view->'format' <> fmt or game_view->'scores' <> 'null'::jsonb or game_view->'preview' <> '{"a":40,"b":20}'::jsonb then raise exception 'TEST: formatted challenge snapshot mismatch'; end if;
+  if game_view->'format' <> fmt or game_view->'scores' <> 'null'::jsonb or game_view->'preview' <> expected_preview then raise exception 'TEST: formatted challenge snapshot mismatch'; end if;
   rejected := false;
   begin perform public.sideout_match_result(game,valid_scores); exception when raise_exception then rejected := true; end;
   if not rejected then raise exception 'TEST: unaccepted match accepted scores'; end if;
@@ -177,7 +179,7 @@ begin
   if not rejected then raise exception 'TEST: scored match rated twice'; end if;
   execute 'reset role';
   if exists(select 1 from sideout.players p where p.user_id in(a,b,c,d) and
-    (p.games <> 2 or p.rating <> case when p.user_id in(a,b) then 1240 else 1260 end or p.wins <> case when p.user_id in(a,b) then 2 else 0 end)) then
+    (p.games <> 2 or p.rating <> case when p.user_id in(a,b) then 1200+expected_award else 1300-expected_award end or p.wins <> case when p.user_id in(a,b) then 2 else 0 end)) then
     raise exception 'TEST: match scores applied rating once per set instead of once per match';
   end if;
   if (select pg_catalog.to_jsonb(m) from sideout.matches m where m.id = legacy_game) <> before_legacy then raise exception 'TEST: historical legacy match changed'; end if;

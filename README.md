@@ -34,6 +34,8 @@ This installation retains browser-based image sharing. Direct Instagram Story in
 
 ## Preview locally
 
+For the Android app prototype, setup commands, callback configuration, and device testing steps, see [mobile/README.md](mobile/README.md). Mobile packaging uses a separate asset copy and does not change the website deployment settings.
+
 Use Node.js 24 or newer. From the website folder, run:
 
 ```powershell
@@ -76,7 +78,17 @@ The backend allows up to 20 new requests per hour and 20 outstanding outgoing re
 
 Cloud activation requires `supabase/migrations/20261017152442_sideout_friends.sql` followed by `supabase/migrations/20261017153913_sideout_friend_presence.sql` before deploying this Friends interface. The local Node preview supports the same actions using its isolated SQLite accounts. Database and browser validations are described in `supabase/README.md`.
 
-## QR codes and doubles
+## Match rooms
+
+In **Play & QR**, tap **Make a room** and share its **room QR** or room link. Players scan with a phone camera, Sideout's scanner, or a QR photo; they can also paste the room link. Sign-in and avatar setup keep the room link. Opening a room does not join automatically: tap an open **+** to choose a slot.
+
+Each room has exactly one leader, its maker. Four slots are for **Team A** and **Team B**, with two more for waiting players. The leader can add waiting slots, up to twelve. Each player occupies one slot in one room. Tap another open **+** to transfer and release the old slot atomically. A contested slot never removes the player from their old slot. Rooms refresh every five seconds while Play is visible, with a manual Refresh action too.
+
+Only the leader can add waiting slots, start a match, or close the room. Guests can leave. The leader chooses sets, points, and the winning margin, then starts when all four playing slots are full. A leader in waiting can start those four players. Playing slots stay fixed until the match finishes or is cancelled; waiting players can move among waiting slots. Afterward, players can rotate into the teams for the next game in the same room.
+
+Scores and MMR use the existing rated match flow. Only the four selected players receive rating changes. Saved duos remain separate from room team choices. Older challenges can still be answered, scored, or cancelled. Apply the room migration documented in `supabase/README.md` before publishing these assets.
+
+## Player QR codes and duos
 
 Open **Play & QR** to show your stable player code and a QR that contains a full Sideout website URL. A normal phone camera can open it directly. Older saved QR images encoded custom player text; reopen the updated website and use its new QR. In Sideout, you can scan with the camera, choose a QR photo, or paste a player code or link. Images are decoded locally in the browser.
 
@@ -86,13 +98,13 @@ The invite stays in the current URL through login and Google OAuth; it is remove
 
 When a new duo forms, a green full-screen celebration shows both saved pixel characters side by side with **Duo with [teammate name]**. It pops into view and disappears automatically after three seconds. It also appears when a traditional invite is accepted or a refresh detects a newly formed duo, and does not replay for an existing duo on initial load or repeated refreshes. Reduced-motion preferences keep the same three-second display without the movement.
 
-Finding a player from another complete duo by QR, photo, player code, or player link opens a red **2v2** matchup preview. It shows all four saved characters, player names, individual MMR, and both team averages for three seconds. Explicitly scanning again replays the preview; background refreshes do not. Choose **Challenge their duo** afterward to send the match invitation. Looking up yourself, your teammate, or an unpaired player does not show the opponent preview. Reduced-motion preferences disable the entrance animation.
+Finding a player by player QR, photo, code, or link opens their profile, where you can add a friend or invite a teammate. Use a **room QR** and choose team slots to make a doubles match.
 
 The normal player QR lets people find your profile without pairing automatically. Choose **Invite as my duo** to send a traditional teammate invitation. Incoming invitations automatically appear in a centered popup on any clubhouse page, showing the inviter’s saved character, name, MMR, and **Accept duo** / **Decline** buttons. Open invitations also appear when signing in; while the app is visible it checks for new ones every 20 seconds. Closing the popup leaves the invitation pending without repeatedly interrupting you; reopen it under **Play & QR → My duo**. A new invitation opens the popup again. Invitations wait until the QR scanner or another dialog closes, and response errors stay visible in the popup so you can retry. Each player can belong to one active duo. Duo invite QRs are the separate path that already has the creator's consent to pair.
 
-Scan a player from another duo and choose **Challenge their duo** to open **Match settings**. Choose **1 set**, **best of 3**, or **best of 5**, a target of **11**, **15**, or **21 points per set**, and **win by 1** or **win by 2**. The default is best of 3 to 11, win by 2. These rules are saved with the challenge and stay fixed once it is sent.
+Before starting, the room leader chooses **1 set**, **best of 3**, or **best of 5**, a target of **11**, **15**, or **21 points per set**, and **win by 1** or **win by 2**. The default is best of 3 to 11, win by 2. These settings stay fixed for the started match.
 
-Both players on the challenged duo automatically receive a centered popup on any clubhouse page, with the chosen format, all four saved characters, player names, individual MMR, team averages, and **Accept match** / **Decline** buttons. A player on that duo accepts the challenge; the sender and their teammate see its waiting status without a response popup. Closing the popup leaves the challenge pending without repeatedly reopening it; choose **View challenge** under **Play & QR → Doubles matches** to decide later. New challenges open the popup again, while accepted, declined, cancelled, and expired challenges disappear on refresh. Invitations and challenges share one popup and wait for another open dialog to close.
+For challenges sent before room matchmaking, both players on the challenged duo still receive a centered popup on any clubhouse page, with the chosen format, all four saved characters, player names, individual MMR, team averages, and **Accept match** / **Decline** buttons. A player on that duo accepts the challenge; the sender and their teammate see its waiting status without a response popup. Closing the popup leaves the challenge pending without repeatedly reopening it; choose **View challenge** under **Play & QR → Doubles matches** to decide later. New challenges open the popup again, while accepted, declined, cancelled, and expired challenges disappear on refresh. Invitations and challenges share one popup and wait for another open dialog to close.
 
 After playing, enter each completed set's score under **Doubles matches**, leaving unplayed sets blank. The winning duo is calculated from the scores: two set wins finish best of 3, and three finish best of 5. Win-by-2 games can extend past their target (for example, 12–10 is valid in a game to 11). Win-by-1 games end exactly at their target. Tied, unfinished, impossible, and extra sets are rejected by both the interface and the server. Draft scores survive connection refreshes and failed submissions during the current visit. Saved set scores appear in the match card and each player's rated history.
 

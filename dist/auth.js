@@ -27,10 +27,15 @@
     const values=new URLSearchParams(location.search).getAll('duo');
     return values.length===1&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(values[0])?values[0].toLowerCase():null;
   })();
+  const pendingRoom=(()=>{const values=new URLSearchParams(location.search).getAll('room');return values.length===1&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(values[0])?values[0].toLowerCase():null;})();
   function afterSignIn(){
     const query=new URLSearchParams();
-    if(pendingPlayer)query.set('player',pendingPlayer);
-    if(pendingDuo)query.set('duo',pendingDuo);
+    const nativeQuery=window.sideoutNative?.isNative?new URLSearchParams(location.search):null;
+    const player=nativeQuery?.get('player')||pendingPlayer,duo=nativeQuery?.get('duo')||pendingDuo;
+    if(/^SO-[A-F0-9]{12}$/i.test(player||''))query.set('player',player.toUpperCase());
+    if(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(duo||''))query.set('duo',duo.toLowerCase());
+    const room=nativeQuery?.get('room')||pendingRoom;
+    if(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(room||''))query.set('room',room.toLowerCase());
     // The invite remains in this URL through avatar setup; no account can inherit a stored invite.
     return query.size?'/?'+query+'#play':'/#profile';
   }
@@ -40,7 +45,7 @@
     service.onAuthStateChange((event)=>{
       if(initializing||busy||signingOut)return;
       if(event==='SIGNED_OUT'&&authenticated)setTimeout(()=>{location.replace('/#login');location.reload();},0);
-      if(event==='SIGNED_IN'&&!authenticated)setTimeout(()=>{location.replace(afterSignIn());location.reload();},0);
+      if(event==='SIGNED_IN'&&!authenticated&&!window.sideoutNative?.isNative)setTimeout(()=>{location.replace(afterSignIn());location.reload();},0);
     });
     return service;
   });
@@ -106,12 +111,13 @@
     let account=null;let failure='';
     try{if(location.protocol==='file:')throw new Error('Accounts need the local server. Run npm start in C:\\dev\\outputs\\sideout, then open http://127.0.0.1:3000.');const session=await request('/api/auth/session');if(session.user){const profile=await request('/api/profile');account={user:session.user,profile:profile.profile};}}
     catch(e){failure=oauthFailure||e.message;}
+    failure=window.sideoutNative?.authError||failure;
     // Read the callback through the SDK before removing its navigation parameters.
     if(oauthFailure){const url=new URL(location.href);['error','error_code','error_description'].forEach(key=>url.searchParams.delete(key));history.replaceState(null,'',url);}
     authenticated=!!account;initializing=false;
     if(account&&(!location.hash||['#login','#signup'].includes(location.hash)))history.replaceState(null,'',afterSignIn());
     document.getElementById('auth-loader').hidden=true;document.body.classList.remove('auth-loading');document.getElementById('player-app').hidden=!account;document.getElementById('auth-view').hidden=!!account;document.getElementById('logout').hidden=!account;
-    if(!account){showMode(location.hash==='#signup'?'signup':'login');if(failure||oauthFailure){error(oauthFailure||failure);if(!oauthFailure){submit.disabled=true;googleButton.disabled=true;}}}
+    if(!account){showMode(location.hash==='#signup'?'signup':'login');if(failure||oauthFailure){error(oauthFailure||failure);if(!oauthFailure&&!window.sideoutNative?.authError){submit.disabled=true;googleButton.disabled=true;}}}
     return account;
   })();
   window.sideoutAuth={ready,saveProfile:profile=>request('/api/profile',{method:'PUT',body:JSON.stringify(profile)})};

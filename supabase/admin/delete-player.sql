@@ -31,7 +31,7 @@ begin
   -- Reads remain possible. A busy database fails closed at the caller's timeout.
   lock table auth.users,auth.refresh_tokens,auth.flow_state,sideout.players,sideout.profiles,sideout.duos,
     sideout.duo_members,sideout.invitations,sideout.matches,sideout.duo_links,
-    sideout.court_checkins,sideout.friendships,sideout.friend_presence in share row exclusive mode;
+    sideout.court_checkins,sideout.friendships,sideout.friend_presence,sideout.rooms,sideout.room_members in share row exclusive mode;
   perform u.id from auth.users u where u.id = p_user_id for update;
   if not found then raise exception 'Account UUID not found; nothing was deleted.' using errcode = 'P0002'; end if;
 
@@ -72,6 +72,12 @@ begin
   delete from sideout.matches m where m.id = any(v_matches);
   get diagnostics v_count = row_count;
   v_counts := v_counts || pg_catalog.jsonb_build_object('matches',v_count);
+  delete from sideout.room_members where user_id=p_user_id;
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || pg_catalog.jsonb_build_object('roomMemberships',v_count);
+  delete from sideout.rooms where leader_id=p_user_id;
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || pg_catalog.jsonb_build_object('rooms',v_count);
   delete from sideout.duo_members m where m.user_id = p_user_id or m.duo_id = any(v_duos);
   get diagnostics v_count = row_count;
   v_counts := v_counts || pg_catalog.jsonb_build_object('duoMembers',v_count);

@@ -21,6 +21,10 @@ function endpoint(path,options){
   if(path==='/api/profile'&&method==='GET')return{rpc:'sideout_profile',args:{},profile:true};
   if(path==='/api/profile'&&method==='PUT')return{rpc:'sideout_save_profile',args:{p_profile:body},save:true};
   if(path==='/api/play'&&method==='GET')return{rpc:'sideout_play',args:{}};
+  if(path==='/api/rooms'&&method==='GET')return{rpc:'sideout_room',args:{p_action:'get',p_data:{}}};
+  if(path==='/api/rooms'&&method==='POST')return{rpc:'sideout_room',args:{p_action:'create',p_data:{}}};
+  const room=path.match(/^\/api\/rooms\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/(slot|waiting|start|leave|close))?$/i);
+  if(room&&(method==='GET'&&!room[2]||method==='POST'&&room[2]))return{rpc:'sideout_room',args:{p_action:room[2]||'get',p_data:{...body,id:room[1]}}};
   if(path==='/api/bookings'&&method==='POST')return{rpc:'sideout_booking',args:{p_action:body.action,p_data:body.data??{}}};
   if(path==='/api/leaderboard'&&method==='GET')return{rpc:'sideout_leaderboard',args:{}};
   if(path==='/api/friends'&&method==='GET')return{rpc:'sideout_friends',args:{}};
@@ -62,20 +66,22 @@ function publicUser(user){
 }
 function providerError(error){
   const unauthenticated=[401,'401'].includes(error.status)||['PGRST301','PGRST303','bad_jwt','session_not_found','refresh_token_not_found','refresh_token_already_used'].includes(error.code)||error.name==='AuthSessionMissingError';
-  return new ServiceError(unauthenticated?'Please log in to continue.':error.message||'That action could not be completed. Try again.',unauthenticated?401:Number(error.status)||400);
+  return new ServiceError(unauthenticated?'Please log in to continue.':error.message||'That action could not be completed. Try again.',unauthenticated?401:error.code==='P0002'?404:Number(error.status)||400);
 }
 function signInRedirect(location){
   const url=new URL(location?.href||'http://localhost:3000/');
   const player=(url.searchParams.get('player')||(url.hash.startsWith('#connect/')?url.hash.slice(9):'')).toUpperCase();
   const duo=url.searchParams.getAll('duo');
+  const room=url.searchParams.getAll('room');
   // Supabase appends its own token fragment; app navigation starts after SDK initialization.
   url.search='';url.hash='';
   if(/^SO-[A-F0-9]{12}$/.test(player||''))url.searchParams.set('player',player);
   if(duo.length===1&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(duo[0]))url.searchParams.set('duo',duo[0].toLowerCase());
+  if(room.length===1&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(room[0]))url.searchParams.set('room',room[0].toLowerCase());
   return url.href;
 }
 
-export function createService(config,{createClient,fetchImpl=globalThis.fetch,location=globalThis.location}={}){
+export function createService(config,{createClient,fetchImpl=globalThis.fetch,location=globalThis.location,native}={}){
   if(config?.provider==='local')return{
     provider:'local',
     onAuthStateChange:()=>({unsubscribe(){}}),
@@ -92,9 +98,16 @@ export function createService(config,{createClient,fetchImpl=globalThis.fetch,lo
   let url;try{url=new URL(config.url);}catch{throw new ServiceError('The website connection has not been configured.',503);}
   if(url.protocol!=='https:'||url.username||url.password||!/^[-a-z0-9]+\.supabase\.(co|net)$/i.test(url.hostname)||!['','/'].includes(url.pathname)||url.search||url.hash||!/^sb_publishable_[A-Za-z0-9_-]+$/.test(config.publishableKey||''))throw new ServiceError('A public Supabase connection is required for this website.',503);
   if(typeof createClient!=='function')throw new ServiceError('The account service could not load. Please refresh.',503);
-  const client=createClient(url.origin,config.publishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,flowType:'implicit'}});
+  const mobile=native?.isNative===true;
+  const client=createClient(url.origin,config.publishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:!mobile,flowType:mobile?'pkce':'implicit'}});
   return{
     provider:'supabase',
+    async completeNativeSignIn(code){
+      if(!mobile)throw new ServiceError('This sign-in is only available in the Sideout app.',400);
+      const result=await client.auth.exchangeCodeForSession(code);
+      if(result.error)throw new ServiceError('Google sign-in could not finish. Please try again.',400);
+      return{ok:true};
+    },
     onAuthStateChange(callback){
       // Supabase invokes this under its session lock; subscribers stay synchronous.
       const {data}=client.auth.onAuthStateChange(callback);
@@ -128,12 +141,17 @@ export function createService(config,{createClient,fetchImpl=globalThis.fetch,lo
         if(!settings.external.google)throw new ServiceError('Google sign-in is still being set up. Please try again later.',503);
         // Only our Google provider and this page's origin can select the destination.
         let result;
-        try{result=await client.auth.signInWithOAuth({provider:'google',options:{redirectTo:signInRedirect(location)}});}
+        try{result=await client.auth.signInWithOAuth({provider:'google',options:mobile?{redirectTo:native.authRedirect,skipBrowserRedirect:true}:{redirectTo:signInRedirect(location)}});}
         catch{throw new ServiceError('Google sign-in is unavailable right now. Please try again shortly.',503);}
         if(result.error)throw new ServiceError('Google sign-in could not start. Please try again shortly.',Number(result.error.status)||400);
+        if(mobile){
+          try{await native.openSignIn(result.data?.url,{providerOrigin:url.origin,returnTo:signInRedirect(location)});}
+          catch{throw new ServiceError('Google sign-in could not open. Please try again.',503);}
+        }
         return{redirecting:true};
       }
       if(route.auth==='logout'){
+        if(mobile)native.clearSignIn();
         const result=await client.auth.signOut({scope:'local'});
         if(result.error)throw providerError(result.error);
         return{ok:true};
@@ -154,7 +172,10 @@ export function getService(){
     const config=module.default||module.connection;
     let createClient;
     if(config?.provider==='supabase')({createClient}=await import('./vendor/supabase-2.117.3.js'));
-    return createService(config,{createClient});
+    const native=globalThis.window?.sideoutNative;
+    const service=createService(config,{createClient,native});
+    if(native?.isNative)await native.connect(service);
+    return service;
   })();
   return servicePromise;
 }
