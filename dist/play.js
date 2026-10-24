@@ -250,7 +250,7 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   const card=el('article','play-match'),top=el('div','play-match-top');
   const labels={pending:popup?'DUO CHALLENGE':'CHALLENGE SENT',active:'READY TO PLAY',completed:'RESULT RECORDED',cancelled:'CANCELLED'};
   top.append(el('span',`play-match-status ${match.status}`,labels[match.status]||match.status),el('span','',shortDate(match.completedAt||match.createdAt)));card.append(top);
-  if(match.format)card.append(el('p','play-match-format',`Best of ${match.format.bestOf} · ${match.format.pointsToWin} points · Win by ${match.format.winBy}`));
+  if(match.format)card.append(el('p','play-match-format',`${match.format.bestOf===1?'1 set':`Best of ${match.format.bestOf}`} · ${match.format.pointsToWin} points · Win by ${match.format.winBy}`));
   const teams=el('div','play-match-teams');
   for(const side of ['a','b']){
    if(side==='b')teams.append(el('div','play-versus','VS'));
@@ -263,8 +263,8 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   }
   card.append(teams);
   if(match.scores?.length){
-   const scores=el('div','play-set-results');scores.append(el('p','',`Set scores · ${includesMe(match.teams.a)?'Your duo':'Other duo'} / ${includesMe(match.teams.b)?'Your duo':'Other duo'}`));
-   match.scores.forEach((score,index)=>scores.append(el('span','',`Set ${index+1} · ${score.a}–${score.b}`)));card.append(scores);
+   const scores=el('div','play-set-results');scores.append(el('p','',`${match.format?.bestOf===1?'Final score':'Set scores'} · ${includesMe(match.teams.a)?'Your duo':'Other duo'} / ${includesMe(match.teams.b)?'Your duo':'Other duo'}`));
+   match.scores.forEach((score,index)=>scores.append(el('span','',`${match.format?.bestOf===1?'Score':`Set ${index+1}`} · ${score.a}–${score.b}`)));card.append(scores);
   }
   const actions=el('div','play-match-actions');
   if(match.status==='pending'){
@@ -309,10 +309,10 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
    }
    return scores;
   };
-  const updateSummary=()=>{try{const winner=validateMatchScores(format,readScores());summary.textContent=`${includesMe(match.teams[winner])?'Your duo wins':'The other duo wins'} this match.`;}catch{summary.textContent=`First duo to win ${Math.floor(format.bestOf/2)+1} ${format.bestOf===1?'set':'sets'}. Leave unplayed sets blank.`;}};
-  form.append(el('h3','','Enter the set scores.'));
+  const updateSummary=()=>{try{const winner=validateMatchScores(format,readScores());summary.textContent=`${includesMe(match.teams[winner])?'Your duo wins':'The other duo wins'} this match.`;}catch{summary.textContent=format.bestOf===1?`Play to ${format.pointsToWin}, win by ${format.winBy}. Enter both final scores.`:`First duo to win ${Math.floor(format.bestOf/2)+1} sets. Leave unplayed sets blank.`;}};
+  form.append(el('h3','',format.bestOf===1?'Enter the final score.':'Enter the set scores.'));
   for(let index=0;index<format.bestOf;index++){
-   const set=el('fieldset','play-score-set'),row=el('div','play-score-inputs');set.append(el('legend','',`Set ${index+1}`));
+   const set=el('fieldset','play-score-set'),row=el('div','play-score-inputs');set.append(el('legend','',format.bestOf===1?'Final score':`Set ${index+1}`));
    for(const side of ['a','b']){
     const label=el('label','',includesMe(match.teams[side])?'Your duo':'Other duo'),input=el('input','play-set-score');input.type='number';input.min='0';input.max='99';input.step='1';input.inputMode='numeric';input.placeholder='—';input.id=`score-${match.id}-${index}-${side}`;input.name=`scores[${index}][${side}]`;input.value=draft[index][side];input.disabled=busy;label.htmlFor=input.id;
     input.addEventListener('focus',()=>{lastScoreFocusId=input.id;});
@@ -321,7 +321,7 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
    set.append(row);form.append(set);
   }
   const button=el('button','button button-black','Record result ↗');button.type='submit';button.disabled=busy;
-  form.append(summary,problem,button,el('p','play-result-note','Check every set before recording. The winner is calculated from the scores. MMR updates once for the whole match.'));updateSummary();
+  form.append(summary,problem,button,el('p','play-result-note',`${format.bestOf===1?'Check both scores':'Check every set'} before recording. The winner is calculated from the scores. MMR updates once for the whole match.`));updateSummary();
   form.addEventListener('submit',event=>{
    event.preventDefault();if(busy)return;
    let scores;

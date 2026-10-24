@@ -6,11 +6,13 @@ The configured project remains **Sideout**, ref `pbfqudxyjklntneipjpq`. The cano
 
 ## Match room activation
 
-Apply `migrations/20261024052500_sideout_match_rooms.sql` after the existing match-scoring and court-booking migrations, before publishing the room interface. The migration is prepared locally and has not been applied to the live project.
+Apply `migrations/20261024052500_sideout_match_rooms.sql` after the existing match-scoring and court-booking migrations, before publishing the room interface. The original room migration was applied to the live project as version 20261024054528.
 
-The authenticated `sideout_room(p_action text,p_data jsonb)` gateway supports get, create, slot, waiting, start, leave, and close. It stores one leader per room, four playing slots, and two to twelve waiting slots. Unique membership and slot keys plus room/player locks prevent double claims. Slot transfers are atomic. Only the leader can add slots, start, or close; active match participants cannot change slots. A leader in waiting can start the selected four players. Historical team references leave saved duo membership unchanged.
+Apply `migrations/20261024055244_room_transfer_slots.sql` before publishing the simplified room interface. It fixes new room matches to one set, 11 points, win by 2, limits membership to four players, and reserves slots 4 and 5 for existing players switching places. The waiting action is retired; the legacy waiting_slots column is retained at 2 for compatibility. Existing matches keep their saved formats. Migration guards preserve memberships by refusing to proceed if an old room has more than four members or uses positions above 5.
 
-The new private tables have RLS enabled, with no browser table or helper grants. Closing a room releases everyone. Apply this migration before using the updated operator account-deletion helper. Run `tests/rooms.sql` and `tests/delete-player-acceptance.sql` as rollback fixtures with the existing scoring regressions. Local SQLite and browser tests also exercise room QR decoding, competing slot choices, waiting rotation, scoring, and unrated waiting players.
+The authenticated `sideout_room(p_action text,p_data jsonb)` gateway supports get, create, slot, start, leave, and close. Room and ordered player locks plus unique membership/slot keys prevent duplicate claims. A fifth player cannot claim a playing slot freed during a transfer. New visitors must choose a playing spot. Only the leader starts or closes a room, and all four playing spots must be filled. Saved duo membership is independent of room sides.
+
+The new private tables have RLS enabled, with no browser table or helper grants. Closing a room releases everyone. Apply this migration before using the updated operator account-deletion helper. Run `tests/rooms.sql` and `tests/delete-player-acceptance.sql` as rollback fixtures with the existing scoring regressions. Local SQLite and browser tests also exercise room QR decoding, competing slot choices, full-room side switching, fixed single-set scoring, and four-player membership limits.
 
 ## Schema and API
 
