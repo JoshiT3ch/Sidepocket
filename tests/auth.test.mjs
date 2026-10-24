@@ -41,6 +41,15 @@ async function authPage({href,provider='local',signedIn=false,avatarCreated=fals
 }
 
 const duoToken='a2790e87-4509-4625-9dad-c3acc267c2f7';
+
+test('room links survive sign-in and avatar setup without automatically selecting a slot',async()=>{
+ const page=await authPage({href:`https://sideout.example/?room=${duoToken}&discard=1#login`,provider:'supabase',signedIn:true});
+ assert.equal(page.location.href,`https://sideout.example/?room=${duoToken}#play`);assert.equal(page.account.profile.avatarCreated,false);
+ assert.equal(page.calls.some(([path])=>path.startsWith('/api/rooms')),false);
+ for(const query of [`room=${duoToken}&room=${duoToken}`,'room=invalid']){
+  const invalid=await authPage({href:`https://sideout.example/?${query}#login`,signedIn:true});assert.equal(invalid.location.href,'https://sideout.example/#profile');
+ }
+});
 test('local login and signup retain only the current valid duo intent through auth mode switches',async()=>{
  for(const mode of ['login','signup']){
   const page=await authPage({href:`https://sideout.example/?duo=${duoToken.toUpperCase()}&redirectTo=https%3A%2F%2Fevil.example#${mode}`});

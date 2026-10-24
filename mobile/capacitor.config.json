@@ -1,0 +1,14 @@
+{
+  "appId": "com.sideout.valencia",
+  "appName": "Sideout",
+  "webDir": "www",
+  "server": {
+    "hostname": "localhost",
+    "androidScheme": "https",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#f5f4ed"
+  }
+}

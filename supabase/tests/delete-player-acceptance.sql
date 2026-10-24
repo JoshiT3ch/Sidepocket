@@ -120,6 +120,12 @@ begin
   select unaffected_game,'completed',ef,gh,e,f,g,h,sideout.teams(da,db),e,f,now_at,'a','[]'::jsonb
   from sideout.duos da,sideout.duos db where da.id=ef and db.id=gh;
 
+  insert into sideout.rooms(leader_id,match_id) values(target,game_a1);
+  insert into sideout.room_members(user_id,room_id,slot)
+   select target,r.id,0 from sideout.rooms r where r.leader_id=target;
+  insert into sideout.room_members(user_id,room_id,slot)
+   select b,r.id,1 from sideout.rooms r where r.leader_id=target;
+
   -- Exact row snapshots detect unwanted account, cosmetic, aggregate or history changes.
   select pg_catalog.jsonb_agg(pg_catalog.to_jsonb(x) order by x.id) into before_auth from auth.users x where x.id=any(others);
   select pg_catalog.jsonb_agg(pg_catalog.to_jsonb(x) order by x.user_id) into before_players from sideout.players x where x.user_id=any(others);

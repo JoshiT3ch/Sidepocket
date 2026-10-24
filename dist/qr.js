@@ -1,6 +1,7 @@
 import qrcode from './vendor/qrcode-generator.js';
-import {playerLink,duoLink} from './player-links.js';
-export {playerLink,duoLink,parsePlayerCode,parseDuoInvite} from './player-links.js';
+import {playerLink,duoLink,roomLink} from './player-links.js';
+export {playerLink,duoLink,roomLink,parseRoomLink,parsePlayerCode,parseDuoInvite} from './player-links.js';
+export function renderRoomQr(canvas,id,base){return renderQrUrl(canvas,roomLink(id,base));}
 
 const QUIET_ZONE = 4;
 const preferredWidths = new WeakMap();

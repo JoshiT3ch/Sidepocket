@@ -9,6 +9,7 @@ const average=players=>Math.round(players.reduce((sum,player)=>sum+Number(player
 /** A three-second opponent introduction. Pairing and game creation stay with the caller. */
 export function createMatchupPreview({document:documentRef=globalThis.document,setTimeout:delay=globalThis.setTimeout,clearTimeout:cancel=globalThis.clearTimeout,drawAvatar:paintAvatar=renderAvatar}={}){
  let overlay=null,slots=[],averages=[],timer=null,destroyed=false;
+ let completion=Promise.resolve(),complete=null;
  const element=(tag,className,text)=>{const node=documentRef.createElement(tag);node.className=className;if(text!==undefined)node.textContent=text;return node;};
 
  function build(){
@@ -39,6 +40,7 @@ export function createMatchupPreview({document:documentRef=globalThis.document,s
   if(timer!==null){cancel(timer);timer=null;}
   if(overlay){overlay.hidden=true;overlay.classList.remove('is-visible');}
   documentRef.documentElement?.classList.remove('sideout-matchup-previewing');
+  complete?.();complete=null;
  }
 
  function show(player,ownDuo,opposingDuo){
@@ -49,6 +51,7 @@ export function createMatchupPreview({document:documentRef=globalThis.document,s
   if(!current||all.filter(member=>samePlayer(member,player)).length!==1)return false;
   const teammate=ownDuo.players.find(member=>member!==current),ordered=[current,teammate,...opposingDuo.players];
   build();hide();
+  completion=new Promise(resolve=>{complete=resolve;});
   ordered.forEach((member,index)=>{
    const {canvas,name,rating}=slots[index];name.textContent=String(member.name||'Player');rating.textContent=`${Number(member.rating)} MMR`;
    canvas.hidden=false;
@@ -67,5 +70,5 @@ export function createMatchupPreview({document:documentRef=globalThis.document,s
  }
 
  function destroy(){hide();overlay?.remove();overlay=null;slots=[];averages=[];destroyed=true;}
- return{show,hide,destroy};
+ return{show,hide,destroy,whenHidden:()=>completion};
 }

@@ -1,0 +1,24 @@
+{
+  "name": "sideout-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "android:init": "npm run build && cap add android && node scripts/configure-android.mjs && cap sync android",
+    "android:sync": "npm run build && node scripts/configure-android.mjs && cap sync android",
+    "android:open": "cap open android",
+    "android:debug": "npm run android:sync && node scripts/android-build.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.0.0",
+    "@capacitor/app": "8.0.0",
+    "@capacitor/browser": "8.0.0",
+    "@capacitor/core": "8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.0.0",
+    "esbuild": "0.27.2"
+  }
+}

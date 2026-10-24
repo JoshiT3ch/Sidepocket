@@ -168,7 +168,7 @@ test('story and effect modules load on demand, reuse controllers and discard del
  await page.node('share-open').click();await page.node('share-open').click();
  assert.equal(creates,1);assert.equal(opens,2);assert.equal(page.counters.imports.filter(name=>name==='./story-editor.js').length,1);
  page.modules['./duo-celebration.js']=new Promise(resolve=>{finishImport=resolve;});
- page.modules['./matchup-preview.js']={createMatchupPreview:()=>({show(){shown++;},hide(){hidden++;}})};
+ page.modules['./matchup-preview.js']={createMatchupPreview:()=>({show(){shown++;},hide(){hidden++;},whenHidden:()=>Promise.resolve()})};
  const pending=page.duo({id:'me'},{id:'duo'});
  for(const fn of page.windowEvents.get('pagehide')||[])await fn();
  finishImport({createDuoCelebration:()=>({show(){shown++;},hide(){hidden++;}})});await pending;
@@ -185,7 +185,7 @@ test('failed optional imports can be retried without breaking page navigation',a
  await page.node('share-open').click();assert.equal(opened,1);
  await assert.rejects(page.duo({id:'me'},{id:'duo'}),/Unexpected import/);
  page.modules['./duo-celebration.js']={createDuoCelebration:()=>({show(){shown++;},hide(){}})};
- page.modules['./matchup-preview.js']={createMatchupPreview:()=>({show(){},hide(){}})};
+ page.modules['./matchup-preview.js']={createMatchupPreview:()=>({show(){},hide(){},whenHidden:()=>Promise.resolve()})};
  await page.duo({id:'me'},{id:'duo'});assert.equal(shown,1);
  await page.navigate('locker');assert.equal(page.counters.clothing.length,10);
 });

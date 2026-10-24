@@ -24,6 +24,7 @@ async function showEffect(kind,...players){
   const version=++effectVersion,effects=await loadEffects();
   if(version!==effectVersion)return;
   effects.duo.hide();effects.matchup.hide();effects[kind].show(...players);
+  if(kind==='matchup')await effects.matchup.whenHidden();
 }
 window.addEventListener('pagehide',()=>{effectVersion++;effectsPromise?.then(effects=>{effects.duo.hide();effects.matchup.hide();}).catch(()=>{});});
 const defaults = {name:account.user.name,skin:'#cf986c',shirt:'#ed795d',paddle:'#7286bb',hat:'cap',height:170,bodyType:'regular',characterType:'male',avatarCreated:false,rating:1200,games:0,wins:0,history:[]};
@@ -262,7 +263,7 @@ document.getElementById('avatar-form').addEventListener('submit',async event=>{
   if(!document.getElementById('setup-name').value.trim()){error.textContent='Enter your player name.';error.hidden=false;return;}
   const button=document.getElementById('finish-avatar');button.disabled=true;button.firstElementChild.textContent='Saving your avatar…';
   const completed={...state,name:document.getElementById('setup-name').value.trim(),height:Number(setupHeight.value),bodyType:chosenBody,avatarCreated:true};
-  try{const destination=parseDuoInvite(location.href)||new URLSearchParams(location.search).has('player')?'play':'profile';await window.sideoutAuth.saveProfile(completed);state=completed;document.getElementById('nickname').value=state.name;document.getElementById('locker-height').value=state.height;document.getElementById('locker-body').value=state.bodyType;document.getElementById('player-app').classList.remove('needs-avatar');render();await startPlay();navigate(destination);toast('Your avatar is ready. Welcome to the clubhouse.');}
+  try{const destination=parseDuoInvite(location.href)||new URLSearchParams(location.search).has('room')||new URLSearchParams(location.search).has('player')?'play':'profile';await window.sideoutAuth.saveProfile(completed);state=completed;document.getElementById('nickname').value=state.name;document.getElementById('locker-height').value=state.height;document.getElementById('locker-body').value=state.bodyType;document.getElementById('player-app').classList.remove('needs-avatar');render();await startPlay();navigate(destination);toast('Your avatar is ready. Welcome to the clubhouse.');}
   catch(e){error.textContent=e.message;error.hidden=false;}
   finally{button.disabled=false;button.firstElementChild.textContent='Create my avatar';}
 });

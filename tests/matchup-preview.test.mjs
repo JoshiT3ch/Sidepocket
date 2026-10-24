@@ -76,6 +76,16 @@ test('hide and destroy cancel timers and remove the temporary scrolling lock',()
  effect.destroy();assert.equal(body.children.length,0);assert.equal(timer.pending,0);assert.equal(scrollLocked(),false);timer.advance(10000);assert.equal(effect.show(mine,own,opposing),false);effect.hide();effect.destroy();assert.equal(body.children.length,0);
 });
 
+test('preview completion waits for hiding and also resolves if the preview is dismissed early',async()=>{
+ const {effect,timer}=setup();
+ effect.show(mine,own,opposing);let finished=false;
+ const done=effect.whenHidden().then(()=>{finished=true;});
+ timer.advance(2999);await Promise.resolve();assert.equal(finished,false);
+ timer.advance(1);await done;assert.equal(finished,true);
+ effect.show(mine,own,opposing);const canceled=effect.whenHidden();effect.hide();await canceled;
+ effect.show(mine,own,opposing);const destroyed=effect.whenHidden();effect.destroy();await destroyed;
+});
+
 test('incomplete, duplicate, unrelated or invalid-rating rosters cannot introduce a false 2v2',()=>{
  const invalid=[
   [null,own,opposing],[mine,null,opposing],[mine,own,null],[mine,{players:[]},opposing],[mine,{players:[mine]},opposing],[mine,own,{players:[opponent1]}],

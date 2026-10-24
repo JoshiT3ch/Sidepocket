@@ -12,6 +12,8 @@ The account's old JWT may remain cryptographically valid until its normal expiry
 
 This handles live account/application records only. It does not promise to purge provider backups, platform/security/audit logs, exported data, operator communications, or copies of shared story cards. No public deletion deadline or backup retention policy is established by this file. A target with a SCIM mapping is rejected for additional operator review instead of silently detaching enterprise records. Future schema changes require another dependency review and fixture run.
 
+The match-room migration is required by this helper. It also removes owned rooms and the target's room membership, releasing guests in those rooms. References from rooms to removed match history are cleared.
+
 ## Rehearse the rollback-only fixture
 
 Run after all existing Sideout migrations, with a project database operator session. The fixture uses only new random synthetic users with `example.invalid` emails, checks target and preserved control rows, then rolls back. Never change its final rollback to commit.

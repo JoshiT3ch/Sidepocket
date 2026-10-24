@@ -32,9 +32,9 @@ class Element{
  focus(){if(this.ownerDocument)this.ownerDocument.activeElement=this;}
  select(){}
 }
-const ids=['play','player-scan-dialog','player-scan-video','scanner-message','play-status','play-error','scan-error','play-identity-player','player-code','player-qr','player-qr-label','player-qr-badge','qr-link-output','create-duo-qr','show-player-qr','player-qr-help','connected-player','my-duo','duo-invitations','duo-invitation-dialog','duo-invitation-close','duo-invitation-error','duo-invitation-heading','duo-invitation-description','install-dialog','story-dialog','play-matches','play-match-count','refresh-play','find-player','connect-player-form','connect-player-code','copy-qr-link','copy-player-code','scan-player','use-player-photo','scan-close','scan-file','scan-help','match-settings-dialog','match-settings-form','match-settings-best-of','match-settings-points','match-settings-win-by','match-settings-submit','match-settings-close','match-settings-error'];
-const buttonIds=new Set(['create-duo-qr','show-player-qr','refresh-play','find-player','copy-qr-link','copy-player-code','scan-player','use-player-photo','scan-close','duo-invitation-close','match-settings-submit','match-settings-close']);
-const dialogIds=new Set(['player-scan-dialog','duo-invitation-dialog','install-dialog','story-dialog','match-settings-dialog']);
+const ids=['found-player-dialog','found-player-close','found-player-status','found-player-error','show-found-player','play','player-scan-dialog','player-scan-video','scanner-message','play-status','play-error','scan-error','play-identity-player','player-code','player-qr','player-qr-label','player-qr-badge','qr-link-output','create-duo-qr','show-player-qr','player-qr-help','connected-player','my-duo','duo-invitations','duo-invitation-dialog','duo-invitation-close','duo-invitation-error','duo-invitation-heading','duo-invitation-description','install-dialog','story-dialog','play-matches','play-match-count','refresh-play','find-player','connect-player-form','connect-player-code','copy-qr-link','copy-player-code','scan-player','use-player-photo','scan-close','scan-file','scan-help','match-settings-dialog','match-settings-form','match-settings-best-of','match-settings-points','match-settings-win-by','match-settings-submit','match-settings-close','match-settings-error'];
+const buttonIds=new Set(['found-player-close','show-found-player','create-duo-qr','show-player-qr','refresh-play','find-player','copy-qr-link','copy-player-code','scan-player','use-player-photo','scan-close','duo-invitation-close','match-settings-submit','match-settings-close']);
+const dialogIds=new Set(['found-player-dialog','player-scan-dialog','duo-invitation-dialog','install-dialog','story-dialog','match-settings-dialog']);
 const selectIds=new Set(['match-settings-best-of','match-settings-points','match-settings-win-by']);
 const origin='https://sideout-valencia.dchiligan.chatgpt.site';
 const token='a2790e87-4509-4625-9dad-c3acc267c2f7';
@@ -62,9 +62,10 @@ async function withPlay({href=origin+'/#play',ready=true,request,onDuoFormed,onO
  const previous=new Map(globals.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
  const nodes=Object.fromEntries(ids.map(id=>{const node=new Element(buttonIds.has(id)?'button':dialogIds.has(id)?'dialog':selectIds.has(id)?'select':id.endsWith('-form')?'form':id==='player-qr'?'canvas':'div');node.id=id;return[id,node];}));
  Object.assign(nodes['match-settings-best-of'],{value:'3'});Object.assign(nodes['match-settings-points'],{value:'11'});Object.assign(nodes['match-settings-win-by'],{value:'2'});
- const globalIds=new Set(['duo-invitations','duo-invitation-dialog','duo-invitation-close','duo-invitation-error','duo-invitation-heading','duo-invitation-description','install-dialog','story-dialog',...ids.filter(id=>id.startsWith('match-settings-'))]);
+ const globalIds=new Set(['found-player-dialog','found-player-close','found-player-status','found-player-error','connected-player','duo-invitations','duo-invitation-dialog','duo-invitation-close','duo-invitation-error','duo-invitation-heading','duo-invitation-description','install-dialog','story-dialog',...ids.filter(id=>id.startsWith('match-settings-'))]);
  nodes.play.append(...Object.values(nodes).filter(node=>node!==nodes.play&&!globalIds.has(node.id)));
  nodes['duo-invitation-dialog'].append(nodes['duo-invitation-heading'],nodes['duo-invitation-description'],nodes['duo-invitation-close'],nodes['duo-invitation-error'],nodes['duo-invitations']);
+ nodes['found-player-dialog'].append(nodes['found-player-close'],nodes['connected-player'],nodes['found-player-status'],nodes['found-player-error']);
  nodes['match-settings-dialog'].append(nodes['match-settings-close'],nodes['match-settings-form']);nodes['match-settings-form'].append(nodes['match-settings-best-of'],nodes['match-settings-points'],nodes['match-settings-win-by'],nodes['match-settings-submit'],nodes['match-settings-error']);
  const calls=[],routes=[],copies=[],formations=[],opponents=[],polls=[],stats=[],page={id:initialPage},documentListeners={},windowListeners={};let current=new URL(href),avatarReady=ready,time=1000;
  const location={get href(){return current.href;},get origin(){return current.origin;}};
@@ -81,6 +82,65 @@ async function withPlay({href=origin+'/#play',ready=true,request,onDuoFormed,onO
  try{context.controller=await initPlay({getAvatarCreated:()=>avatarReady,now:()=>time,loadQrDecoder,onStats:value=>stats.push(value),onNavigate:route=>{routes.push(route);page.id=route;},onDuoFormed:(player,duo)=>{formations.push({player,duo});return onDuoFormed?.(player,duo);},onOpponentFound:(player,duo,otherDuo)=>{opponents.push({player,duo,otherDuo});return onOpponentFound?.(player,duo,otherDuo);}});await run(context);}
  finally{for(const [key,descriptor]of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}}
 }
+
+test('finding a player by code opens global details and invites them only after an explicit tap',async()=>{
+ await withPlay({request:path=>path.startsWith('/api/players/')?{player:partner,duo:null}:snapshot()},async({nodes,calls,lookup})=>{
+  await lookup(partner.code);
+  assert.equal(nodes['found-player-dialog'].open,true);
+  assert.equal(nodes.play.contains(nodes['found-player-dialog']),false);
+  assert.equal(nodes['found-player-dialog'].contains(nodes['connected-player']),true);
+  assert.match(nodes['connected-player'].textContent,/Court Friend/);
+  assert.match(nodes['connected-player'].textContent,/1200 MMR/);
+  assert.match(nodes['connected-player'].textContent,/SO-111111111111/);
+  assert.equal(calls.some(call=>call.method==='POST'),false);
+  const invite=nodes['connected-player'].querySelectorAll('button').find(node=>node.textContent.startsWith('Invite as my duo'));
+  assert.equal(invite.disabled,false);await invite.click();
+  assert.deepEqual(calls.find(call=>call.path==='/api/duos'),{path:'/api/duos',body:{playerCode:partner.code},method:'POST'});
+  assert.equal(nodes['found-player-dialog'].open,false);assert.match(nodes['play-status'].textContent,/Duo invite sent/);
+ });
+});
+
+test('scanning an available player opens the same details popup after closing the camera',async()=>{
+ let stops=0;
+ await withPlay({loadQrDecoder:async()=>()=>partner.code,mediaDevices:{async getUserMedia(){return{getTracks:()=>[{stop(){stops++;}}]};}},request:path=>path.startsWith('/api/players/')?{player:partner,duo:null}:snapshot()},async({nodes,calls})=>{
+  Object.assign(nodes['player-scan-video'],{readyState:2,videoWidth:100,videoHeight:100});
+  await nodes['scan-player'].click();await nextTurn();
+  assert.equal(stops,1);assert.equal(nodes['player-scan-dialog'].open,false);assert.equal(nodes['found-player-dialog'].open,true);
+  assert.match(nodes['connected-player'].textContent,/Court Friend/);assert.equal(calls.some(call=>call.method==='POST'),false);
+ });
+});
+
+test('player details dismiss without reopening on polls and can be reopened explicitly',async()=>{
+ await withPlay({request:path=>path.startsWith('/api/players/')?{player:partner,duo:null}:snapshot()},async({nodes,lookup,controller,poll,calls})=>{
+  await lookup(partner.code);await nodes['found-player-close'].click();assert.equal(nodes['found-player-dialog'].open,false);
+  await controller.refresh();await poll();assert.equal(nodes['found-player-dialog'].open,false);
+  await nodes['show-found-player'].click();assert.equal(nodes['found-player-dialog'].open,true);
+  let prevented=false;await nodes['found-player-dialog'].emit('cancel',{preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);assert.equal(nodes['found-player-dialog'].open,false);assert.equal(calls.some(call=>call.method==='POST'),false);
+ });
+});
+
+test('player invitation errors stay inside the popup and support retry without duplicate submissions',async()=>{
+ const saved=deferred();let attempts=0;
+ await withPlay({request:path=>path.startsWith('/api/players/')?{player:partner,duo:null}:path==='/api/duos'?(++attempts===1?saved.promise:snapshot()):snapshot()},async({nodes,lookup})=>{
+  await lookup(partner.code);
+  const invite=()=>nodes['connected-player'].querySelectorAll('button').find(node=>node.textContent.startsWith('Invite as my duo'));
+  const submitting=invite().click();await nextTurn();assert.equal(nodes['found-player-close'].disabled,true);
+  await invite().click();await nodes['found-player-close'].click();assert.equal(attempts,1);
+  saved.reject(new Error('Connection interrupted. Try again.'));await submitting;
+  assert.equal(nodes['found-player-dialog'].open,true);assert.equal(nodes['found-player-error'].hidden,false);
+  assert.match(nodes['found-player-error'].textContent,/Connection interrupted/);assert.equal(invite().disabled,false);
+  await invite().click();assert.equal(attempts,2);assert.equal(nodes['found-player-dialog'].open,false);
+ });
+});
+
+test('a player lookup that finishes after leaving Play cannot open a delayed popup',async()=>{
+ const found=deferred();
+ await withPlay({request:path=>path.startsWith('/api/players/')?found.promise:snapshot()},async({nodes,lookup,setPage,controller})=>{
+  await lookup(partner.code);setPage('profile');await controller.handleNavigation('profile');
+  found.resolve({player:partner,duo:null});await nextTurn();assert.equal(nodes['found-player-dialog'].open,false);
+ });
+});
 
 test('Add friend sends a public code, blocks duplicate clicks and opens Friends after success',async()=>{
  const saved=deferred();
@@ -580,6 +640,36 @@ test('leaving the scanner during decoder startup releases the camera without sta
   decoder.resolve(()=>{decodes++;return null;});await opening;
   assert.equal(decodes,0);assert.equal(nodes['player-scan-video'].srcObject,null);
  });
+});
+
+test('scanning an opposing duo opens settings after the preview and sends nothing until confirmation',async()=>{
+ const preview=deferred();
+ await withPlay({onOpponentFound:()=>preview.promise,loadQrDecoder:async()=>()=>opponent.code,mediaDevices:{async getUserMedia(){return{getTracks:()=>[{stop(){}}]};}},request:path=>path.startsWith('/api/players/')?{player:opponent,duo:opposingDuo}:paired()},async({nodes,calls,opponents})=>{
+  Object.assign(nodes['player-scan-video'],{readyState:2,videoWidth:100,videoHeight:100});
+  await nodes['scan-player'].click();await nextTurn();
+  assert.equal(opponents.length,1);assert.equal(nodes['player-scan-dialog'].open,false);
+  assert.equal(nodes['match-settings-dialog'].open,false,'let the player see the preview first');
+  preview.resolve();await nextTurn();
+  assert.equal(nodes['match-settings-dialog'].open,true);
+  assert.equal(nodes['match-settings-best-of'].value,'3');
+  assert.equal(calls.some(call=>call.method==='POST'),false,'scanning never creates a match');
+  await submitForm(nodes['match-settings-form']);
+  assert.equal(calls.filter(call=>call.path==='/api/matches').length,1);
+ });
+});
+
+test('leaving Play or replacing the opponent prevents an old scan from reopening match settings',async()=>{
+ for(const action of ['navigate','replace']){
+  const preview=deferred();
+  await withPlay({onOpponentFound:()=>preview.promise,loadQrDecoder:async()=>()=>opponent.code,mediaDevices:{async getUserMedia(){return{getTracks:()=>[{stop(){}}]};}},request:path=>path.startsWith('/api/players/')?{player:path.endsWith(partner.code)?partner:opponent,duo:path.endsWith(partner.code)?paired().duo:opposingDuo}:paired()},async({nodes,calls,setPage,controller,lookup})=>{
+   Object.assign(nodes['player-scan-video'],{readyState:2,videoWidth:100,videoHeight:100});
+   await nodes['scan-player'].click();await nextTurn();
+   if(action==='navigate'){setPage('profile');await controller.handleNavigation('profile');}else await lookup(partner.code);
+   preview.resolve();await nextTurn();
+   assert.equal(nodes['match-settings-dialog'].open,false,action);
+   assert.equal(calls.some(call=>call.method==='POST'),false);
+  });
+ }
 });
 
 test('camera scanning loads the decoder once and closes the camera after finding a player',async()=>{
