@@ -187,12 +187,15 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
   finally{setBusy(false);render();}
  }
  function renderDuo(){
-  const target=byId('my-duo');target.replaceChildren();
+  const target=byId('my-duo')||byId('duo-actions');if(!target)return;target.replaceChildren();
+  const compact=target.id==='duo-actions';
   if(data.duo){
+   if(!compact){
    const roster=el('div','play-duo-roster');data.duo.players.forEach(player=>roster.append(person(player)));target.append(roster);
    const rating=el('div','play-team-average');rating.append(el('span','','TEAM AVERAGE'),el('strong','',`${average(data.duo.players)} MMR`));target.append(rating);
+   }
    const actions=el('div','play-actions');actions.append(mutableButton('Leave this duo',()=>runAction('/api/duos/leave',{},'You left the duo. Scan a player to find your next teammate.')));target.append(actions);
-  }else{const empty=el('p','play-empty');empty.append(el('strong','','Two is a team.'),document.createTextNode(' Create a duo invite QR for a teammate to scan and join automatically. Player-code invitations still need the other player to accept.'));target.append(empty);}
+  }else if(!compact){const empty=el('p','play-empty');empty.append(el('strong','','Two is a team.'),document.createTextNode(' Create a duo invite QR for a teammate to scan and join automatically. Player-code invitations still need the other player to accept.'));target.append(empty);}
   const pending=pendingInvitations();
   if(pending.length){const actions=el('div','play-actions');actions.append(mutableButton('View duo invitation',()=>showInvitations(true)));target.append(el('p','play-helper',`${pending.length} pending duo invitation${pending.length===1?'':'s'}.`),actions);}
  }
