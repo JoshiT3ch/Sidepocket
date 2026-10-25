@@ -2,6 +2,8 @@
 
 Hosting now replaces the Courts navigation and page. The following describes the retained legacy booking backend; see [Hosting](hosting.md) for the current interface.
 
+The next paid court-owner model is documented in [Court Owner and paid booking plan](court-owner-booking-plan.md): separate PHP 139 player and PHP 1,000 owner memberships, with PHP 50 deducted per booking. It supersedes the historical planned PHP 100 membership below and is awaiting provider provisioning.
+
 The Courts page now uses `bookings.js` and `bookings.css`, replacing the retired community check-in screen. Existing directory records, check-ins, and Friends court sharing remain intact.
 
 Court 1 is a free, clearly marked test venue. A reservation here never implies a real venue booking. Signed-in players can reserve one-hour slots up to 30 days ahead, view bookings, and cancel before the start time. Philippine time is used on both client and database. A partial unique database index prevents duplicate confirmed reservations for the same slot. Owners see and can cancel their courts' upcoming reservations. Cancellation retains history and releases availability.
