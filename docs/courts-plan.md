@@ -1,4 +1,6 @@
-# Court applications and bookings
+# Archived court applications and bookings
+
+Hosting now replaces the Courts navigation and page. The following describes the retained legacy booking backend; see [Hosting](hosting.md) for the current interface.
 
 The Courts page now uses `bookings.js` and `bookings.css`, replacing the retired community check-in screen. Existing directory records, check-ins, and Friends court sharing remain intact.
 

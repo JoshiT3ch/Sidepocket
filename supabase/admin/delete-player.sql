@@ -31,7 +31,8 @@ begin
   -- Reads remain possible. A busy database fails closed at the caller's timeout.
   lock table auth.users,auth.refresh_tokens,auth.flow_state,sideout.players,sideout.profiles,sideout.duos,
     sideout.duo_members,sideout.invitations,sideout.matches,sideout.duo_links,
-    sideout.court_checkins,sideout.friendships,sideout.friend_presence,sideout.rooms,sideout.room_members in share row exclusive mode;
+    sideout.court_checkins,sideout.friendships,sideout.friend_presence,sideout.rooms,sideout.room_members,
+    sideout.hosted_events,sideout.hosting_participants in share row exclusive mode;
   perform u.id from auth.users u where u.id = p_user_id for update;
   if not found then raise exception 'Account UUID not found; nothing was deleted.' using errcode = 'P0002'; end if;
 
@@ -63,6 +64,12 @@ begin
   where l.owner_id = p_user_id or l.claimed_by = p_user_id or l.duo_id = any(v_duos);
   get diagnostics v_count = row_count;
   v_counts := v_counts || pg_catalog.jsonb_build_object('duoLinks',v_count);
+  delete from sideout.hosting_participants where user_id=p_user_id;
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || pg_catalog.jsonb_build_object('hostingMemberships',v_count);
+  delete from sideout.hosted_events where host_id=p_user_id;
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || pg_catalog.jsonb_build_object('hostedEvents',v_count);
   delete from sideout.friendships f where f.requester_id = p_user_id or f.recipient_id = p_user_id;
   get diagnostics v_count = row_count;
   v_counts := v_counts || pg_catalog.jsonb_build_object('friendships',v_count);
@@ -121,6 +128,8 @@ begin
     or exists(select 1 from auth.flow_state f where f.user_id = p_user_id or f.linking_target_id = p_user_id)
     or exists(select 1 from sideout.friendships f where f.requester_id = p_user_id or f.recipient_id = p_user_id)
     or exists(select 1 from sideout.friend_presence p where p.user_id = p_user_id)
+    or exists(select 1 from sideout.hosted_events e where e.host_id = p_user_id)
+    or exists(select 1 from sideout.hosting_participants p where p.user_id = p_user_id)
     or exists(select 1 from sideout.players p where p.user_id = p_user_id)
     or exists(select 1 from sideout.profiles p where p.user_id = p_user_id) then
     raise exception 'Live account cleanup incomplete; roll back.';

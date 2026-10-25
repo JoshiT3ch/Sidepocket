@@ -51,7 +51,7 @@ function fakePage(){
  const body=new Element('body');
  const node=id=>{if(!nodes.has(id)){const item=new Element(id.includes('avatar')||id==='story-canvas'?'canvas':'div');item.id=id;nodes.set(id,item);body.append(item);}return nodes.get(id);};
  Object.assign(doc,{body,getElementById:node,createElement:tag=>new Element(tag),querySelector:selector=>selector==='.rating-track span'?node('rating-track-span'):select(body,selector)[0]||null,querySelectorAll:selector=>select(body,selector),addEventListener:(type,fn)=>documentEvents.set(type,fn)});
- const pageIds=['avatar','profile','locker','rating','play','leaderboard','courts','friends'];
+ const pageIds=['avatar','profile','locker','rating','play','leaderboard','hosting','friends'];
  for(const id of pageIds){const page=node(id);page.className='page'+(id==='profile'?' active':'');const nav=new Element('button');nav.className='nav-button';nav.dataset.page=id;body.append(nav);}
  for(const scope of ['setup','locker']){
   for(const type of ['male','female']){const button=new Element('button');button.dataset.character=type;node(scope+'-character-options').append(button);}
@@ -109,6 +109,42 @@ test('Friends import that completes after pagehide cannot initialize a stale con
  for(const fn of page.windowEvents.get('pagehide')||[])await fn();
  finishImport({initFriends:()=>{creates++;return{handleNavigation:async()=>{},destroy(){}};}});
  await Promise.resolve();await Promise.resolve();assert.equal(creates,0);
+ for(const fn of page.windowEvents.get('pageshow')||[])await fn({persisted:true});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(creates,1);
+});
+
+test('Hosting loads on demand and old court links open the same reusable controller',async()=>{
+ const page=await appPage();let creates=0;const navigations=[];
+ page.modules['./hosting.js']={initHosting:()=>{creates++;return{handleNavigation:async value=>navigations.push(value),destroy(){}};}};
+ assert.equal(page.counters.imports.includes('./hosting.js'),false);
+ await page.navigate('courts');await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(page.context.location.hash,'#hosting');
+ assert.equal(page.node('hosting').hidden,false);assert.equal(creates,1);
+ await page.navigate('profile');await page.navigate('hosting');
+ assert.equal(creates,1);assert.deepEqual(navigations,['hosting','profile','hosting']);
+ assert.equal(page.counters.imports.filter(name=>name==='./hosting.js').length,1);
+ assert.equal(page.counters.imports.includes('./bookings.js'),false);
+});
+
+test('Hosting restore replaces a pending controller without accepting its late completion',async()=>{
+ const page=await appPage();let creates=0,destroys=0,finishFirst;
+ page.modules['./hosting.js']={initHosting:()=>{const own=++creates;return{handleNavigation:()=>own===1?new Promise(resolve=>{finishFirst=resolve;}):Promise.resolve(),destroy(){destroys++;}};}};
+ await page.navigate('hosting');await Promise.resolve();await Promise.resolve();
+ assert.equal(creates,1);
+ for(const fn of page.windowEvents.get('pagehide')||[])await fn();
+ for(const fn of page.windowEvents.get('pageshow')||[])await fn({persisted:true});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(creates,2);assert.equal(destroys,1);
+ finishFirst();await Promise.resolve();await page.navigate('profile');await page.navigate('hosting');
+ assert.equal(creates,2,'late completion cannot replace the restored Hosting controller');
+});
+
+test('Hosting import finishing after pagehide waits for a new page lifetime',async()=>{
+ const page=await appPage();let creates=0,finishImport;
+ page.modules['./hosting.js']=new Promise(resolve=>{finishImport=resolve;});
+ await page.navigate('hosting');
+ for(const fn of page.windowEvents.get('pagehide')||[])await fn();
+ finishImport({initHosting:()=>{creates++;return{handleNavigation:async()=>{},destroy(){}};}});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(creates,0);
  for(const fn of page.windowEvents.get('pageshow')||[])await fn({persisted:true});
  await new Promise(resolve=>setImmediate(resolve));assert.equal(creates,1);
 });

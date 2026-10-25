@@ -451,7 +451,7 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
  document.addEventListener('close',()=>showInvitations(),true);
  byId('scan-file').addEventListener('change',event=>scanFile(event.target.files?.[0]));
  const activePage=()=>document.querySelector('.page.active')?.id;
- const visible=()=>['profile','rating','play','locker','friends','courts','leaderboard'].includes(activePage())&&getAvatarCreated()&&!document.hidden;
+ const visible=()=>['profile','rating','play','locker','friends','hosting','leaderboard'].includes(activePage())&&getAvatarCreated()&&!document.hidden;
  const stopPolling=()=>{if(poll!==null){clearInterval(poll);poll=null;}};
  const startPolling=()=>{if(visible()&&poll===null)poll=setInterval(()=>{if(visible()&&!busy&&!lookingUp&&!dialog.open)refresh({quiet:true});},pollInterval);};
  window.addEventListener('pagehide',()=>{closeScanner();closeFoundPlayer(true);stopPolling();});
@@ -459,7 +459,7 @@ export async function initPlay({onStats=()=>{},onNavigate=()=>{},getAvatarCreate
  document.addEventListener('visibilitychange',()=>{stopPolling();if(document.hidden)closeScanner();else{startPolling();if(visible()){showInvitations();refresh({quiet:true,maxAge:pollInterval});}}});
  async function handleNavigation(page){
   if(page!=='play'){closeScanner();closeFoundPlayer(true);}
-  if(!['profile','rating','play','locker','friends','courts','leaderboard'].includes(page)){stopPolling();return;}
+  if(!['profile','rating','play','locker','friends','hosting','leaderboard'].includes(page)){stopPolling();return;}
   startPolling();await refresh({quiet:Boolean(data),maxAge:pollInterval});showInvitations();
   if(page==='play')await handleDeepLink();
  }

@@ -423,3 +423,16 @@ test('court booking actions use the fixed authenticated gateway with unchanged p
   }
   await assert.rejects(service.request('/api/bookings'),{status:404});
 });
+
+test('hosting uses its fixed gateway and preserves numeric fields and the initial list payload',async()=>{
+  const {service,calls}=fixture();
+  for(const [action,data]of [
+    ['list',{scope:'upcoming'}],
+    ['create',{title:'Friday doubles',category:'men',capacity:30,fee:130,date:'2026-11-01',startTime:'19:00',endTime:'22:00',venue:'Valencia court',address:'Valencia City, Bukidnon',notes:'Bring a paddle',scope:'mine'}],
+    ['edit',{eventId:id,capacity:30}],['request',{eventId:id}],['respond',{eventId:id,userId:id,accept:true}],['rsvp',{eventId:id,status:'maybe'}],['cancel',{eventId:id}]
+  ]){
+    await service.request('/api/hosting',post({action,data}));
+    assert.deepEqual(calls.at(-1),['rpc','sideout_hosting',{p_action:action,p_data:data}]);
+  }
+  for(const [path,options]of [['/api/hosting',{}],['/api/hosting?userId=another-player',post({action:'list'})],['/api/hosting',{method:'PUT',body:'{}'}]])await assert.rejects(service.request(path,options),{status:404});
+});

@@ -49,20 +49,20 @@ let leaderboardStarting=null;
 let friendsController=null;
 let friendsStarting=null;
 let friendsVersion=0;
-let bookingsController=null,bookingsStarting=null,bookingsVersion=0;
-async function startBookings(){
+let hostingController=null,hostingStarting=null,hostingVersion=0;
+async function startHosting(){
   if(!state.avatarCreated)return;
-  if(bookingsController)return bookingsController.handleNavigation('courts');
-  if(bookingsStarting)return bookingsStarting;
-  const version=bookingsVersion;
-  bookingsStarting=(async()=>{
-    try{const {initBookings}=await import('./bookings.js');if(version!==bookingsVersion)return;bookingsController=initBookings();await bookingsController.handleNavigation(document.querySelector('.page.active')?.id||'profile');}
-    catch(error){if(version===bookingsVersion)toast(error.message||'Could not open court bookings. Please try again.');}
-    finally{if(version===bookingsVersion)bookingsStarting=null;}
-  })();return bookingsStarting;
+  if(hostingController)return hostingController.handleNavigation('hosting');
+  if(hostingStarting)return hostingStarting;
+  const version=hostingVersion;
+  hostingStarting=(async()=>{
+    try{const {initHosting}=await import('./hosting.js');if(version!==hostingVersion)return;hostingController=initHosting();await hostingController.handleNavigation(document.querySelector('.page.active')?.id||'profile');}
+    catch(error){if(version===hostingVersion)toast(error.message||'Could not open Hosting. Please try again.');}
+    finally{if(version===hostingVersion)hostingStarting=null;}
+  })();return hostingStarting;
 }
-window.addEventListener('pagehide',()=>{bookingsVersion++;bookingsController?.destroy();bookingsController=null;bookingsStarting=null;});
-window.addEventListener('pageshow',event=>{if(event.persisted&&document.querySelector('.page.active')?.id==='courts')startBookings();});
+window.addEventListener('pagehide',()=>{hostingVersion++;hostingController?.destroy();hostingController=null;hostingStarting=null;});
+window.addEventListener('pageshow',event=>{if(event.persisted&&document.querySelector('.page.active')?.id==='hosting')startHosting();});
 async function startFriends(){
   if(!state.avatarCreated)return;
   if(friendsController)return friendsController.handleNavigation('friends');
@@ -165,7 +165,7 @@ function render(){
   if(page==='rating')renderChanged('history',matchStats?.history||[],renderHistory);
   storyEditor?.refresh();
 }
-function navigate(page){if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard','friends','courts'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});render();if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();if(friendsController)Promise.resolve(friendsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='friends')startFriends();if(bookingsController)Promise.resolve(bookingsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='courts')startBookings();}
+function navigate(page){if(page==='courts')page='hosting';if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard','friends','hosting'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});render();if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();if(friendsController)Promise.resolve(friendsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='friends')startFriends();if(hostingController)Promise.resolve(hostingController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='hosting')startHosting();}
 let storyEditor=null,storyStarting=null;
 let chosenBody=state.avatarCreated?state.bodyType:null;
 const setupHeight=document.getElementById('setup-height');
