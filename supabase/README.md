@@ -1,8 +1,16 @@
 # Supabase backend
 
+## Hosting activation
+
+Apply `migrations/20261024063316_sideout_hosting.sql` before publishing the Hosting interface. It adds private `hosted_events` and `hosting_participants` with RLS, indexes, and no browser table privileges. The authenticated invoker gateway `public.sideout_hosting(text,jsonb)` calls guarded private code. Verification uses the existing protected `player_verifications` expiry on every create/edit; profile JSON and avatar choices cannot grant hosting rights. Request approval, RSVP changes, editing, and cancellation lock the same event row before changing capacity or membership. Hosts remain able to moderate or cancel after verification expires.
+
+Run `tests/hosting.sql` as a transaction ending in `ROLLBACK`. Existing court, application, booking, and match history are retained. See `../docs/hosting.md` for the flow and `admin/hosting-operations.md` for verification operations. Deploy this migration before using the updated operator account deletion helper.
+
+## Legacy court bookings
+
 Court owner applications, protected verified-player entitlements, reviewer roles, and hourly reservations use `20261022160605_sideout_owner_court_bookings.sql`. Apply it before the bookings interface. The private definer function performs authentication and ownership checks; `public.sideout_booking` is an invoker gateway. New tables have RLS and no browser table access. Run `supabase/tests/bookings.sql` as a rollback-only acceptance fixture. Reviewer designation and manual verification setup are described in `admin/court-operations.md`; subscription payments are not enabled.
 
-The configured project remains **Sideout**, ref `pbfqudxyjklntneipjpq`. The canonical website is `https://sideout-valenciacity.vercel.app`, served by Vercel project `prj_wOFyOpHTDgn1VFBSIbeaqLWDqnFj` from the repository's `dist/` directory (Framework Preset **Other**, no install or build command, Output Directory `.`). The static browser client reads its public URL and publishable key from `dist/connection.js`; account and application data remain in the same Supabase project. This hosting change requires no database migration.
+The configured project remains **Sideout**, ref `pbfqudxyjklntneipjpq`. The canonical website is `https://sideout-valenciacity.vercel.app`, served by Vercel project `prj_wOFyOpHTDgn1VFBSIbeaqLWDqnFj` from the repository's `dist/` directory (Framework Preset **Other**, no install or build command, Output Directory `.`). The static browser client reads its public URL and publishable key from `dist/connection.js`; account and application data remain in the same Supabase project. The Vercel hosting configuration itself needs no database migration.
 
 ## Match room activation
 

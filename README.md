@@ -60,9 +60,13 @@ The optional local SQLite mode retains its separate email/password forms and bac
 
 Male and female hairstyles have separate choices; both support six hair colors. The locker includes 40 clothing pieces across caps, shirts, shorts, and pants, with Nike and Adidas choices. Avatars and outfits are saved per account and appear on the profile and downloadable story card.
 
-## Court owners and bookings
+## Hosting
 
-Open **Courts** to try **Court 1**, a free test listing, reserve one-hour slots in Philippine time, and manage bookings. Court owners apply with details, hours, rate, ownership information, and an optional photo. Only verified players can submit; a separate Sideout reviewer approves courts before booking opens. Planned verified membership is **PHP 100/month** with a profile checkmark. Subscription payments are not enabled. No real reviewer or membership is automatically assigned. See `docs/courts-plan.md` and `supabase/admin/court-operations.md` for details and operator setup.
+Open **Hosting** for upcoming games, **My events**, and past events. Date-grouped cards show the title, doubles category, Philippine time, venue, and real confirmed/capacity count (for example, 30/30). **Details** includes the full address, per-player fee, notes, and an optional calendar download. **Participants** shows confirmed pixel players and the remaining open spots.
+
+Only an account with an existing, unexpired protected Sideout verification can create or edit events. Host verification uses the same account checkmark; editable profile fields cannot grant it. The host takes one confirmed spot. Other players choose **Request to join**, **Maybe**, or **Can’t go**; the host approves or declines pending requests. Capacity is enforced atomically when approving. Changing a confirmed RSVP releases the spot after an inline confirmation. Expired verification still allows the host to review requests or cancel an existing event. Events can be edited before they start, and cancelled events keep their participant history.
+
+Events use one date, start/end times, a venue and address, 2–100 player spots, and an optional whole-peso fee. Any fees are arranged directly with the host. Categories advertise the intended doubles group; avatar appearance is not used to infer player eligibility. Publishing an event does not reserve its venue. Existing court directory, booking, and application records remain in the database, but Hosting replaces their navigation page. See `docs/hosting.md` and `supabase/admin/hosting-operations.md`.
 
 ## Friends
 
@@ -72,7 +76,7 @@ Friendships are separate from duos, matches, and ratings. Adding a friend never 
 
 In **Friends**, optionally share a status (**Available**, **Playing**, **Practicing**, or **Away**) and a manually selected court. Status and court sharing have separate controls and both start off. Only accepted friends receive the enabled details. Sharing expires two hours after an explicit save; reading or polling never renews it. Hidden and expired details include no last-seen timestamp. No GPS location is requested or tracked.
 
-Turning court sharing off also removes your existing public court check-in. **Hide status & whereabouts** turns off both sharing choices, clears the selected court, and removes the public check-in in the same transaction. Checking in again under **Courts** explicitly shares your court with all signed-in players, even if Friends sharing remains off. Removing a friend revokes future reads of your shared status/court. Details already received by another device cannot be recalled.
+Turning court sharing off also removes your existing public court check-in. **Hide status & whereabouts** turns off both sharing choices, clears the selected court, and removes the public check-in in the same transaction. Removing a friend revokes future reads of your shared status/court. Details already received by another device cannot be recalled.
 
 The backend allows up to 20 new requests per hour and 20 outstanding outgoing requests. Repeated sends of the same pending request or existing friendship do not create duplicates. Crossing requests require an explicit incoming acceptance. After a decline, cancellation, or removal, both players wait 24 hours before starting another request for that pair. Historical request records support these limits; account deletion removes relationships and request history involving that account.
 
@@ -142,14 +146,6 @@ Open **Leaderboard** to see the top 100 players in the Valencia community, ranke
 Equal ratings share a competition rank (for example, 1, 1, 3). Wins, then fewer games, then player code provide a stable display order within a tie without changing the shared rank. Each row shows the player's pixel avatar, MMR, wins, games, and win rate. Your own position is available even when your row is outside the top 100. Reopen the page or use **Refresh** to load the latest results.
 
 The board is available to signed-in players. It shares the existing game display name and avatar, never email addresses or account credentials. It uses genuine rated results; profile demo statistics cannot affect placement.
-
-## Courts and open play
-
-Open **Courts** to choose one of the eight community-maintained Valencia listings and see its active player check-ins, pixel avatars, MMR, and open-play availability. The directory includes Paddle Grove, Jerpits Pickleball Hub, Hive Pickleball Court, ACP Pickleball, Pickle Point Arena Bukidnon, Spinners Pickle Yard, VALENCIA GOODWILL GIANTS SPORTS TOWN, and The Bodega. Names and addresses were supplied by the Sideout owner; directions are Google Maps search links and require no Maps API.
-
-Signed-in players with completed avatars can tap **I'm here**, choose **Playing**, **Idle**, or **Practicing**, and optionally select **Available for open play**. This voluntarily shares the selected court and status with signed-in players. Each account has one check-in; choosing another court moves it atomically. **Leave court** removes only the caller's presence. This is a self-reported check-in, not GPS tracking or a court reservation.
-
-Check-ins expire two hours after the last explicit check-in or status update. Reading or polling never renews them. The page refreshes every 10 seconds while visible, and removes known expired entries locally if the network fails. Rosters show up to 100 active players, with the caller first; directory counts include all active check-ins. Errors preserve the saved check-in and show a retry action. The data uses the same Supabase project across devices, and court actions cannot edit ratings.
 
 ## Validation
 

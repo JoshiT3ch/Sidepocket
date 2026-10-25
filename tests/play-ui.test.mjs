@@ -252,7 +252,7 @@ test('a pending invitation opens a global popup on startup with the saved invite
 }));
 
 test('new invitations are polled and pop up from every signed-in page',async()=>{
- for(const page of ['profile','rating','play','locker','friends','courts','leaderboard']){
+ for(const page of ['profile','rating','play','locker','friends','hosting','leaderboard']){
   let current=snapshot();
   await withPlay({initialPage:page,request:()=>current},async({controller,polls,poll,nodes,routes})=>{
    await controller.handleNavigation(page);
@@ -346,7 +346,7 @@ test('an expired invitation closes even when its quiet polling refresh fails',as
  });
 });
 
-test('hidden tabs defer pending invitation popups until the page becomes visible',()=>withPlay({hidden:true,initialPage:'courts',request:()=>invited()},async({nodes,visibility,polls})=>{
+test('hidden tabs defer pending invitation popups until the page becomes visible',()=>withPlay({hidden:true,initialPage:'hosting',request:()=>invited()},async({nodes,visibility,polls})=>{
  assert.equal(nodes['duo-invitation-dialog'].open,false);assert.equal(polls.filter(entry=>entry.active).length,0);
  await visibility(false);assert.equal(nodes['duo-invitation-dialog'].open,true);assert.equal(polls.filter(entry=>entry.active).length,1);
 }));
@@ -374,7 +374,7 @@ test('incoming challenges show both rosters and ratings for recipients on either
 });
 
 test('incoming match challenges pop up through polling on every signed-in page',async()=>{
- for(const page of ['profile','rating','play','locker','friends','courts','leaderboard']){
+ for(const page of ['profile','rating','play','locker','friends','hosting','leaderboard']){
   let current=paired();
   await withPlay({initialPage:page,request:()=>current},async({nodes,controller,poll,routes})=>{
    await controller.handleNavigation(page);assert.equal(nodes['duo-invitation-dialog'].open,false);
@@ -416,7 +416,7 @@ test('challenge close and Escape postpone the current match while View challenge
 test('challenge accept and decline block duplicate submissions, show retry errors, and keep duo celebration silent',async()=>{
  for(const accept of [true,false]){
   const saved=deferred();let attempts=0,current=challenged();
-  await withPlay({initialPage:'courts',request:(path,body)=>{if(path==='/api/matches/match-1/respond'){assert.deepEqual(body,{accept});if(++attempts===1)return saved.promise;current=challenged([challenge({status:accept?'active':'cancelled'})]);}return current;}},async({nodes,calls,escapeInvitation,document,formations})=>{
+  await withPlay({initialPage:'hosting',request:(path,body)=>{if(path==='/api/matches/match-1/respond'){assert.deepEqual(body,{accept});if(++attempts===1)return saved.promise;current=challenged([challenge({status:accept?'active':'cancelled'})]);}return current;}},async({nodes,calls,escapeInvitation,document,formations})=>{
    const label=accept?'Accept match ↗':'Decline',action=button(nodes['duo-invitations'],label),responding=action.click();await new Promise(resolve=>setImmediate(resolve));
    assert.equal(nodes['duo-invitation-close'].disabled,true);assert.ok(nodes['duo-invitations'].querySelectorAll('button').every(node=>node.disabled));
    await action.click();await nodes['duo-invitation-close'].click();assert.equal(await escapeInvitation(),true);assert.equal(nodes['duo-invitation-dialog'].open,true);

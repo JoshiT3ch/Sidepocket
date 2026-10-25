@@ -2,7 +2,7 @@
 
 This adds a Capacitor Android build around the existing Sideout interface. It uses the same hosted accounts and game data. The website is still served from `../dist`; native assets are assembled separately in `mobile/www`.
 
-The current court directory/check-in page and Courts navigation entry have been removed at the owner's request. The future direction is court-owner applications, court images, and bookings; see [the Courts plan](../docs/courts-plan.md). Those replacement features are not implemented yet.
+The web source now uses **Hosting** for verified hosts’ events, participant lists, and host-approved join requests. Legacy court/booking records remain available to the backend. Rebuild and reinstall the Android app to include these web changes; existing APK artifacts are older builds.
 
 ## Current status
 

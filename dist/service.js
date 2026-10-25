@@ -26,6 +26,7 @@ function endpoint(path,options){
   const room=path.match(/^\/api\/rooms\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/(slot|waiting|start|leave|close))?$/i);
   if(room&&(method==='GET'&&!room[2]||method==='POST'&&room[2]))return{rpc:'sideout_room',args:{p_action:room[2]||'get',p_data:{...body,id:room[1]}}};
   if(path==='/api/bookings'&&method==='POST')return{rpc:'sideout_booking',args:{p_action:body.action,p_data:body.data??{}}};
+  if(path==='/api/hosting'&&method==='POST')return{rpc:'sideout_hosting',args:{p_action:body.action,p_data:body.data??{}}};
   if(path==='/api/leaderboard'&&method==='GET')return{rpc:'sideout_leaderboard',args:{}};
   if(path==='/api/friends'&&method==='GET')return{rpc:'sideout_friends',args:{}};
   if(path==='/api/friends/request'&&method==='POST')return{rpc:'sideout_friend_request',args:{p_code:body.playerCode}};
