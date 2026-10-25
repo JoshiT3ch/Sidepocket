@@ -1,0 +1,280 @@
+/* My player: identity, rating and match history in one place. */
+#profile .profile-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 22px;
+}
+#profile .character-card,
+#profile .profile-right { min-width: 0; }
+#profile .character-card > .card-top { padding: 23px 24px 0; }
+#profile .character-card > .card-top .eyebrow { font-size: 8px; }
+#profile .character-stage { min-height: 240px; }
+#profile .character-stage canvas {
+  display: block;
+  width: 100%;
+  height: clamp(240px, 24vw, 300px);
+  max-height: 300px;
+  object-fit: contain;
+}
+#profile .stage-word {
+  top: 35px;
+  left: 24px;
+  font-size: clamp(65px, 6vw, 89px);
+  letter-spacing: -4px;
+}
+#profile .stage-tag { right: 23px; bottom: 19px; }
+#profile .character-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 15px 20px;
+  padding: 19px 24px 21px;
+}
+#profile .character-footer > div:first-child { flex: 1 1 160px; min-width: 0; }
+#profile .character-footer .player-name { display: block; line-height: 1.2; }
+#profile .character-footer #profile-verified { margin: 0 0 5px; }
+#profile .profile-character-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 100%;
+}
+#profile .profile-character-actions > button {
+  flex: 1 1 130px;
+  min-width: 0;
+  min-height: 40px;
+  justify-content: space-between;
+  font-size: 11px;
+  padding: 10px 13px;
+  gap: 8px;
+}
+#profile .profile-character-actions > .button-outline { border-color: #9cae60; }
+#profile .profile-right { display: flex; margin: 0; }
+#profile .profile-rating-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 27px;
+  background: var(--white);
+}
+#profile .profile-rating-card .card-top { gap: 10px; }
+#profile .profile-rating-card .card-top > .eyebrow { font-size: 9px; }
+#profile .profile-rating-card .rating-number {
+  font-size: clamp(82px, 8vw, 112px);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -5px;
+  margin: 30px 0 13px;
+  overflow-wrap: anywhere;
+}
+#profile .profile-rating-card .rating-sub { align-items: baseline; }
+#profile .profile-rating-card .rating-sub strong {
+  font-family: 'Space Grotesk', Arial, sans-serif;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -.35px;
+}
+#profile .profile-rating-card .rating-sub > span {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.1px;
+}
+#profile .profile-rating-card .rating-track { height: 6px; margin-top: 20px; }
+#profile .profile-rating-card .rating-help {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #637057;
+  margin: 17px 0 0;
+}
+#profile .profile-rating-note {
+  font-size: 10px;
+  line-height: 1.75;
+  color: var(--muted);
+  margin: 11px 0 24px;
+}
+#profile .profile-rating-card > .button,
+#profile .profile-rating-card > .text-button {
+  margin-top: auto;
+  width: 100%;
+  min-height: 44px;
+}
+#profile .profile-rating-card > .text-button { align-items: center; }
+#profile .stat-strip {
+  grid-template-columns: 1fr 1fr 1fr 1.45fr;
+  padding: 23px 0;
+  margin-top: 20px;
+  background: var(--white);
+}
+#profile .stat-strip > div { min-width: 0; gap: 9px; }
+#profile .stat-strip strong { font-variant-numeric: tabular-nums; }
+#profile .stat-strip .stat-city { gap: 10px; line-height: 1.4; }
+
+#profile .profile-rating-guide {
+  margin-top: 20px;
+  border: 1px solid #ded6c7;
+  border-radius: 12px;
+  background: #efe7da;
+}
+#profile .profile-rating-guide > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 25px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 11px;
+}
+#profile .profile-rating-guide > summary::-webkit-details-marker { display: none; }
+#profile .profile-rating-guide > summary:focus-visible {
+  outline: 3px solid #5267cd;
+  outline-offset: 4px;
+}
+#profile .profile-guide-title { min-width: 0; }
+#profile .profile-guide-title .eyebrow { font-size: 8px; color: #807358; }
+#profile .profile-guide-title h2 {
+  font: 500 24px/1.15 'Space Grotesk', Arial, sans-serif;
+  letter-spacing: -.7px;
+  margin: 7px 0 0;
+}
+#profile .profile-guide-toggle {
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  height: 34px;
+  border: 1px solid #cbbfa9;
+  border-radius: 50%;
+  font-size: 0;
+}
+#profile .profile-guide-toggle::before { content: '+'; font: 400 22px/1 'DM Sans', Arial, sans-serif; }
+#profile .profile-rating-guide[open] .profile-guide-toggle::before { content: '−'; }
+#profile .profile-rating-guide-content { padding: 0 25px 24px; }
+#profile .profile-rating-examples {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 20px;
+  border-top: 1px solid #d9d0c0;
+}
+#profile .profile-rating-examples .rating-example {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  min-width: 0;
+  gap: 13px;
+  padding: 16px;
+  border: 1px solid #ded7ca;
+  border-radius: 8px;
+  background: #fffdf5;
+  font-size: 11px;
+  line-height: 1.6;
+}
+#profile .profile-rating-examples .rating-example strong {
+  color: #526b31;
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 500;
+  letter-spacing: -1px;
+}
+#profile .profile-rating-explanation {
+  font-size: 11px;
+  line-height: 1.9;
+  color: #746b5c;
+  margin: 17px 0 0;
+}
+
+#profile-match-history { margin-top: 33px; min-width: 0; }
+#profile-match-history > .play-panel-heading { margin-top: 0; margin-bottom: 20px; }
+#profile-match-history > .play-panel-heading > div { min-width: 0; }
+#profile-match-history .play-panel-heading .play-actions {
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin: 0;
+}
+#profile-match-history .play-panel-heading .play-helper { margin: 0; }
+#profile-match-history #refresh-history { min-height: 40px; flex: 0 0 auto; }
+#profile-matches { gap: 15px; }
+#profile-matches .play-match { padding: 24px; }
+#profile-matches .play-match-top { margin-bottom: 18px; }
+#profile-matches .play-match-format { font-size: 10px; padding: 9px 11px; margin-bottom: 18px; }
+#profile-matches .play-match-teams {
+  grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);
+  gap: 18px;
+}
+#profile-matches .play-match-team { min-width: 0; }
+#profile-matches .play-team-label { flex-wrap: wrap; gap: 4px 10px; }
+#profile-matches .play-match-team .play-person { min-width: 0; gap: 11px; }
+#profile-matches .play-person-copy { min-width: 0; }
+#profile-matches .play-person-copy strong { overflow-wrap: anywhere; }
+#profile-matches .play-rating-change { overflow-wrap: anywhere; line-height: 1.6; }
+#profile-matches .play-match-actions > p:last-child { margin-bottom: 0; }
+#profile-matches .play-set-results { margin-top: 20px; }
+#profile-matches > .play-empty { margin: 0; font-size: 12px; line-height: 1.9; }
+#profile .profile-membership { margin-top: 24px; }
+
+@media (max-width: 1100px) {
+  #profile .profile-grid { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 18px; }
+  #profile .character-card > .card-top { padding: 21px 20px 0; flex-wrap: wrap; }
+  #profile .character-footer { padding: 18px 20px 20px; }
+  #profile .profile-rating-card { padding: 23px; }
+  #profile .profile-rating-card .rating-number { font-size: 88px; margin-top: 28px; }
+  #profile .profile-rating-card .rating-sub strong { font-size: 15px; }
+  #profile .stat-strip > div { padding: 0 18px; }
+  #profile .profile-rating-examples { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #profile .profile-rating-examples .rating-example { flex-direction: row; align-items: center; gap: 16px; }
+  #profile .profile-rating-examples .rating-example strong { flex-shrink: 0; }
+}
+
+@media (max-width: 700px) {
+  #profile .profile-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  #profile .character-card > .card-top { flex-wrap: nowrap; }
+  #profile .character-stage { min-height: 235px; }
+  #profile .character-stage canvas { height: 260px; max-height: 260px; }
+  #profile .stage-word { font-size: 83px; top: 26px; }
+  #profile .character-footer { padding: 18px 22px 20px; gap: 14px; }
+  #profile .character-footer .player-name { font-size: 25px; }
+  #profile .profile-character-actions > button { min-height: 43px; }
+  #profile .profile-rating-card { padding: 25px; }
+  #profile .profile-rating-card .rating-number { font-size: 96px; margin-top: 26px; }
+  #profile .profile-rating-card .rating-sub strong { font-size: 17px; }
+  #profile .profile-rating-note { margin-bottom: 21px; }
+  #profile .profile-rating-card > .button { margin-top: 0; }
+  #profile .stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 21px 0; row-gap: 24px; margin-top: 16px; }
+  #profile .stat-strip > div { padding: 0 22px; }
+  #profile .stat-strip > div:nth-child(2) { border: 0; }
+  #profile .stat-strip .stat-city { font-size: 16px; }
+  #profile .profile-rating-guide { margin-top: 16px; }
+  #profile .profile-rating-guide > summary { padding: 21px 22px; }
+  #profile .profile-guide-title h2 { font-size: 23px; }
+  #profile .profile-rating-guide-content { padding: 0 21px 22px; }
+  #profile .profile-rating-examples .rating-example { flex-direction: column; align-items: flex-start; gap: 14px; padding: 15px; }
+  #profile-match-history { margin-top: 29px; }
+  #profile-match-history > .play-panel-heading { gap: 15px; align-items: flex-end; }
+  #profile-match-history .play-panel-heading h2 { font-size: 25px; }
+  #profile-match-history .play-panel-heading .play-actions { gap: 7px; flex-direction: column; align-items: flex-end; }
+  #profile-match-history #refresh-history { min-height: 39px; }
+  #profile-matches .play-match { padding: 20px; }
+  #profile-matches .play-match-teams { grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr); gap: 10px; }
+  #profile-matches .play-team-label { flex-direction: column; gap: 3px; }
+  #profile-matches .play-match-team .play-person { flex-direction: column; align-items: flex-start; gap: 7px; margin-top: 16px; }
+  #profile-matches .play-match-team .play-person canvas { width: 45px; height: 55px; }
+  #profile-matches .play-match-team .play-person strong { font-size: 13px; line-height: 1.5; }
+  #profile-matches .play-match-team .play-person span { font-size: 9px; }
+  #profile-matches .play-match-actions > p { line-height: 1.8; }
+  #profile .profile-membership { margin-top: 20px; }
+}
+
+@media (max-width: 380px) {
+  #profile .character-card > .card-top { flex-wrap: wrap; gap: 7px; }
+  #profile .profile-rating-card { padding: 22px; }
+  #profile .profile-rating-card .rating-number { font-size: 86px; }
+  #profile .stat-strip > div { padding: 0 18px; }
+  #profile .stat-strip .eyebrow { font-size: 7px; }
+  #profile .profile-rating-guide > summary { padding: 20px; }
+  #profile .profile-rating-guide-content { padding: 0 18px 20px; }
+  #profile-matches .play-match { padding: 17px; }
+  #profile-matches .play-match-teams { gap: 8px; }
+}
