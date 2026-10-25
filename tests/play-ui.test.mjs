@@ -32,8 +32,8 @@ class Element{
  focus(){if(this.ownerDocument)this.ownerDocument.activeElement=this;}
  select(){}
 }
-const ids=['found-player-dialog','found-player-close','found-player-status','found-player-error','show-found-player','play','player-scan-dialog','player-scan-video','scanner-message','play-status','play-error','scan-error','play-identity-player','player-code','player-qr','player-qr-label','player-qr-badge','qr-link-output','create-duo-qr','show-player-qr','player-qr-help','connected-player','my-duo','duo-invitations','duo-invitation-dialog','duo-invitation-close','duo-invitation-error','duo-invitation-heading','duo-invitation-description','install-dialog','story-dialog','play-matches','play-match-count','refresh-play','find-player','connect-player-form','connect-player-code','copy-qr-link','copy-player-code','scan-player','use-player-photo','scan-close','scan-file','scan-help','match-settings-dialog','match-settings-form','match-settings-best-of','match-settings-points','match-settings-win-by','match-settings-submit','match-settings-close','match-settings-error'];
-const buttonIds=new Set(['found-player-close','show-found-player','create-duo-qr','show-player-qr','refresh-play','find-player','copy-qr-link','copy-player-code','scan-player','use-player-photo','scan-close','duo-invitation-close','match-settings-submit','match-settings-close']);
+const ids=['found-player-dialog','found-player-close','found-player-status','found-player-error','show-found-player','play','profile','profile-match-history','profile-matches','profile-match-count','profile-match-status','profile-match-error','refresh-history','player-scan-dialog','player-scan-video','scanner-message','play-status','play-error','scan-error','play-identity-player','player-code','player-qr','player-qr-label','player-qr-badge','qr-link-output','create-duo-qr','show-player-qr','player-qr-help','connected-player','my-duo','duo-invitations','duo-invitation-dialog','duo-invitation-close','duo-invitation-error','duo-invitation-heading','duo-invitation-description','install-dialog','story-dialog','play-matches','play-match-count','refresh-play','find-player','connect-player-form','connect-player-code','copy-qr-link','copy-player-code','scan-player','use-player-photo','scan-close','scan-file','scan-help','match-settings-dialog','match-settings-form','match-settings-best-of','match-settings-points','match-settings-win-by','match-settings-submit','match-settings-close','match-settings-error'];
+const buttonIds=new Set(['found-player-close','show-found-player','create-duo-qr','show-player-qr','refresh-play','refresh-history','find-player','copy-qr-link','copy-player-code','scan-player','use-player-photo','scan-close','duo-invitation-close','match-settings-submit','match-settings-close']);
 const dialogIds=new Set(['found-player-dialog','player-scan-dialog','duo-invitation-dialog','install-dialog','story-dialog','match-settings-dialog']);
 const selectIds=new Set(['match-settings-best-of','match-settings-points','match-settings-win-by']);
 const origin='https://sideout-valencia.dchiligan.chatgpt.site';
@@ -62,8 +62,9 @@ async function withPlay({href=origin+'/#play',ready=true,request,onDuoFormed,onO
  const previous=new Map(globals.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
  const nodes=Object.fromEntries(ids.map(id=>{const node=new Element(buttonIds.has(id)?'button':dialogIds.has(id)?'dialog':selectIds.has(id)?'select':id.endsWith('-form')?'form':id==='player-qr'?'canvas':'div');node.id=id;return[id,node];}));
  Object.assign(nodes['match-settings-best-of'],{value:'3'});Object.assign(nodes['match-settings-points'],{value:'11'});Object.assign(nodes['match-settings-win-by'],{value:'2'});
- const globalIds=new Set(['found-player-dialog','found-player-close','found-player-status','found-player-error','connected-player','duo-invitations','duo-invitation-dialog','duo-invitation-close','duo-invitation-error','duo-invitation-heading','duo-invitation-description','install-dialog','story-dialog',...ids.filter(id=>id.startsWith('match-settings-'))]);
+ const globalIds=new Set(['found-player-dialog','found-player-close','found-player-status','found-player-error','connected-player','duo-invitations','duo-invitation-dialog','duo-invitation-close','duo-invitation-error','duo-invitation-heading','duo-invitation-description','install-dialog','story-dialog','profile','profile-match-history','profile-matches','profile-match-count','profile-match-status','profile-match-error','refresh-history',...ids.filter(id=>id.startsWith('match-settings-'))]);
  nodes.play.append(...Object.values(nodes).filter(node=>node!==nodes.play&&!globalIds.has(node.id)));
+ nodes.profile.append(nodes['profile-match-history']);nodes['profile-match-history'].append(nodes['profile-matches'],nodes['profile-match-count'],nodes['profile-match-status'],nodes['profile-match-error'],nodes['refresh-history']);
  nodes['duo-invitation-dialog'].append(nodes['duo-invitation-heading'],nodes['duo-invitation-description'],nodes['duo-invitation-close'],nodes['duo-invitation-error'],nodes['duo-invitations']);
  nodes['found-player-dialog'].append(nodes['found-player-close'],nodes['connected-player'],nodes['found-player-status'],nodes['found-player-error']);
  nodes['match-settings-dialog'].append(nodes['match-settings-close'],nodes['match-settings-form']);nodes['match-settings-form'].append(nodes['match-settings-best-of'],nodes['match-settings-points'],nodes['match-settings-win-by'],nodes['match-settings-submit'],nodes['match-settings-error']);
@@ -252,7 +253,7 @@ test('a pending invitation opens a global popup on startup with the saved invite
 }));
 
 test('new invitations are polled and pop up from every signed-in page',async()=>{
- for(const page of ['profile','rating','play','locker','friends','hosting','membership','leaderboard']){
+ for(const page of ['profile','play','locker','friends','hosting','membership','leaderboard']){
   let current=snapshot();
   await withPlay({initialPage:page,request:()=>current},async({controller,polls,poll,nodes,routes})=>{
    await controller.handleNavigation(page);
@@ -374,7 +375,7 @@ test('incoming challenges show both rosters and ratings for recipients on either
 });
 
 test('incoming match challenges pop up through polling on every signed-in page',async()=>{
- for(const page of ['profile','rating','play','locker','friends','hosting','membership','leaderboard']){
+ for(const page of ['profile','play','locker','friends','hosting','membership','leaderboard']){
   let current=paired();
   await withPlay({initialPage:page,request:()=>current},async({nodes,controller,poll,routes})=>{
    await controller.handleNavigation(page);assert.equal(nodes['duo-invitation-dialog'].open,false);
@@ -752,6 +753,50 @@ test('saved format is shown in incoming challenges and normal match cards withou
  for(const format of [null,undefined])await withPlay({request:()=>challenged([challenge({format})])},async({nodes})=>{assert.doesNotMatch(nodes['duo-invitations'].textContent,/Best of/);assert.doesNotMatch(nodes['play-matches'].textContent,/Best of/);});
 });
 
+test('My player loads deduplicated finished cards newest first while Play keeps active and pending games',async()=>{
+ const completed=challenge({id:'completed',status:'completed',createdAt:1000,completedAt:5000,format:{bestOf:1,pointsToWin:11,winBy:2},scores:[{a:11,b:7}],winnerSide:'a'});
+ const cancelled=challenge({id:'cancelled',status:'cancelled',createdAt:4000});
+ const earlier=challenge({id:'earlier',status:'completed',createdAt:500,completedAt:2000,winnerSide:'b'});
+ const active=challenge({id:'active',status:'active',createdAt:6000});
+ const pending=challenge({id:'pending',createdAt:7000,createdBy:mine.id});
+ await withPlay({initialPage:'profile',request:()=>({...challenged([pending,completed,active,cancelled]),history:[structuredClone(completed),earlier]})},async({nodes,calls})=>{
+  assert.ok(calls.some(call=>call.path==='/api/play'),'profile startup fetches history without visiting Play');
+  assert.deepEqual(nodes['profile-matches'].children.map(card=>card.dataset.matchId),['completed','cancelled','earlier']);
+  assert.deepEqual(nodes['play-matches'].children.map(card=>card.dataset.matchId),['active','pending']);
+  assert.equal(nodes.play.contains(nodes['profile-matches']),false);
+  assert.match(nodes['profile-match-count'].textContent,/3/);assert.match(nodes['play-match-count'].textContent,/2/);
+  assert.match(nodes['profile-matches'].textContent,/RESULT RECORDED/);assert.match(nodes['profile-matches'].textContent,/CANCELLED/);assert.match(nodes['profile-matches'].textContent,/11.*7/);
+  assert.doesNotMatch(nodes['profile-matches'].textContent,/MMR each if this duo wins/);
+  assert.doesNotMatch(nodes['play-matches'].textContent,/RESULT RECORDED|CANCELLED/);
+ });
+});
+
+test('Profile Refresh and polling update cancelled history even when rated totals stay unchanged',async()=>{
+ let current=challenged([]);
+ await withPlay({initialPage:'profile',request:()=>structuredClone(current)},async({nodes,controller,poll,stats})=>{
+  assert.match(nodes['profile-matches'].textContent,/match/i);
+  current=challenged([challenge({id:'first',status:'cancelled',createdAt:2000})]);
+  await nodes['refresh-history'].click();assert.deepEqual(nodes['profile-matches'].children.map(card=>card.dataset.matchId),['first']);
+  const received=stats.length;
+  current=challenged([challenge({id:'second',status:'cancelled',createdAt:3000}),...current.matches]);
+  await poll();assert.deepEqual(nodes['profile-matches'].children.map(card=>card.dataset.matchId),['second','first']);
+  assert.equal(stats.length,received,'cancelled games cannot alter rated totals or the completed-game stats signature');
+  assert.equal(nodes['refresh-history'].disabled,false);assert.equal(nodes['profile-match-error'].hidden,true);
+ });
+});
+
+test('Profile refresh failures keep existing history, report the error on Profile and permit retry',async()=>{
+ const pending=deferred();let calls=0;
+ const current=challenged([challenge({status:'cancelled'})]);
+ await withPlay({initialPage:'profile',request:()=>++calls===2?pending.promise:structuredClone(current)},async({nodes})=>{
+  const loading=nodes['refresh-history'].click();await nextTurn();assert.equal(nodes['refresh-history'].disabled,true);
+  pending.reject(new Error('History could not connect. Try again.'));await loading;
+  assert.match(nodes['profile-match-error'].textContent,/History could not connect/);assert.equal(nodes['profile-match-error'].hidden,false);
+  assert.match(nodes['profile-matches'].textContent,/CANCELLED/);assert.equal(nodes['refresh-history'].disabled,false);
+  await nodes['refresh-history'].click();assert.equal(nodes['profile-match-error'].hidden,true);assert.match(nodes['profile-matches'].textContent,/CANCELLED/);
+ });
+});
+
 test('one-set matches show one final-score pair and derive the winner from the entered score',async()=>{
  let current=challenged([challenge({status:'active',format:{bestOf:1,pointsToWin:11,winBy:2}})]);
  await withPlay({request:(path,body)=>{if(path.endsWith('/result'))current=challenged([challenge({status:'completed',format:{bestOf:1,pointsToWin:11,winBy:2},scores:body.scores,winnerSide:'a'})]);return current;}},async({nodes,calls,document})=>{
@@ -761,7 +806,7 @@ test('one-set matches show one final-score pair and derive the winner from the e
   assert.equal(nodes['play-matches'].textContent.includes('Best of 1'),false);
   setScore(document,'match-1',0,'a',11);setScore(document,'match-1',0,'b',7);await submitForm(form);
   assert.deepEqual(calls.filter(call=>call.path.endsWith('/result')).map(call=>call.body),[{scores:[{a:11,b:7}]}]);
-  assert.match(nodes['play-matches'].textContent,/Final score/);
+  assert.match(nodes['profile-matches'].textContent,/Final score/);assert.doesNotMatch(nodes['play-matches'].textContent,/RESULT RECORDED/);
  });
 });
 
@@ -786,7 +831,7 @@ test('formatted scores derive the winner, preserve drafts on refresh and failure
   assert.match(nodes['play-error'].textContent,/Save interrupted/);for(const [index,score]of scores.entries())for(const side of ['a','b'])assert.equal(document.getElementById(`score-match-1-${index}-${side}`).value,String(score[side]));
   await submitForm(document.getElementById('result-match-1'));assert.equal(attempts,2);
   assert.deepEqual(calls.filter(call=>call.path.endsWith('/result')).map(call=>call.body),[{scores},{scores}]);
-  assert.match(nodes['play-matches'].textContent,/RESULT RECORDED/);assert.match(nodes['play-matches'].textContent,/11.*7/);assert.match(nodes['play-matches'].textContent,/12.*10/);
+  assert.match(nodes['profile-matches'].textContent,/RESULT RECORDED/);assert.match(nodes['profile-matches'].textContent,/11.*7/);assert.match(nodes['profile-matches'].textContent,/12.*10/);
  });
 });
 
@@ -815,7 +860,7 @@ test('a failed score submission restores the last focused field and clears its e
   setScore(document,'match-1',0,'b',8);assert.equal(problem.hidden,true);assert.equal(problem.textContent,'');
   await submitForm(document.getElementById('result-match-1'));
   assert.equal(attempts,2);assert.deepEqual(calls.filter(call=>call.path.endsWith('/result')).map(call=>call.body),[{scores:firstScores},{scores:[{a:11,b:8},{a:11,b:8}]}]);
-  assert.equal(nodes['play-error'].hidden,true);assert.match(nodes['play-matches'].textContent,/RESULT RECORDED/);assert.doesNotMatch(nodes['play-matches'].textContent,/Connection lost/);
+  assert.equal(nodes['play-error'].hidden,true);assert.match(nodes['profile-matches'].textContent,/RESULT RECORDED/);assert.doesNotMatch(nodes['play-matches'].textContent,/Connection lost/);
  });
 });
 

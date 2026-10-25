@@ -51,7 +51,7 @@ function fakePage(){
  const body=new Element('body');
  const node=id=>{if(!nodes.has(id)){const item=new Element(id.includes('avatar')||id==='story-canvas'?'canvas':'div');item.id=id;nodes.set(id,item);body.append(item);}return nodes.get(id);};
  Object.assign(doc,{body,getElementById:node,createElement:tag=>new Element(tag),querySelector:selector=>selector==='.rating-track span'?node('rating-track-span'):select(body,selector)[0]||null,querySelectorAll:selector=>select(body,selector),addEventListener:(type,fn)=>documentEvents.set(type,fn)});
- const pageIds=['avatar','profile','locker','rating','play','leaderboard','hosting','friends','membership'];
+ const pageIds=['avatar','profile','locker','play','leaderboard','hosting','friends','membership'];
  for(const id of pageIds){const page=node(id);page.className='page'+(id==='profile'?' active':'');const nav=new Element('button');nav.className='nav-button';nav.dataset.page=id;body.append(nav);}
  const membershipTrigger=node('profile-get-verified');membershipTrigger.tagName='BUTTON';membershipTrigger.dataset.membershipPlan='player';
  for(const scope of ['setup','locker']){
@@ -206,6 +206,12 @@ test('profile startup draws one visible avatar and defers locker, setup, story a
  assert.equal(page.counters.avatar.length,1,'rating updates cannot redraw an unchanged outfit');
 });
 
+test('saved My rating links open the player profile that now contains the rating',async()=>{
+ const page=await appPage();await page.navigate('rating');
+ assert.equal(page.context.location.hash,'#profile');assert.equal(page.node('profile').hidden,false);
+ assert.equal(page.document.querySelector('.nav-button[data-page="rating"]'),null);
+});
+
 test('locker keeps canvas/button nodes across polls and choices, then refreshes changed hidden avatars on navigation',async()=>{
  const page=await appPage();await page.navigate('locker');
  assert.equal(page.counters.avatar.length,2);assert.equal(page.counters.hair.length,6);assert.equal(page.counters.clothing.length,10);
@@ -234,16 +240,19 @@ test('height slider draws its latest value once per frame and character changes 
  assert.equal(page.node('setup-hair-options').children.filter(button=>button.attributes['aria-pressed']==='true').length,1);
 });
 
-test('history rebuilds only when visible match history changes and saves flush when the app backgrounds',async()=>{
- const page=await appPage();await page.navigate('rating');const root=page.node('history'),count=root.rebuilds;
- await page.stats({rating:1280,games:5,wins:3});await page.stats({rating:1280,games:5,wins:3});assert.equal(root.rebuilds,count);
+test('rated totals remain correct after the compact history is removed and saves flush in the background',async()=>{
+ const page=await appPage();
+ for(const key of ['rating','games','wins','winrate'])page.node('test-'+key).dataset[key]='';
+ await page.navigate('rating');
+ await page.stats({rating:1280,games:5,wins:3});await page.stats({rating:1280,games:5,wins:3});
+ assert.equal(page.node('test-rating').textContent,'1280');assert.equal(page.node('test-games').textContent,'5');assert.equal(page.node('test-wins').textContent,'3');assert.equal(page.node('test-winrate').textContent,'60%');
  page.document.hidden=true;await page.documentEvents.get('visibilitychange')();assert.equal(page.counters.flushes,1);
  for(const fn of page.windowEvents.get('pagehide')||[])await fn();assert.equal(page.counters.flushes,2);
  await page.navigate('locker');await page.node('save-look').click();assert.equal(page.counters.saves.at(-1).options.immediate,true);
  const match={teams:{a:[{id:'me',name:'Court Player',rating:1200},{id:'partner',name:'Partner',rating:1200}],b:[{id:'foe-1',name:'Rally Friend',rating:1220},{id:'foe-2',name:'Net Friend',rating:1180}]},winnerSide:'a',completedAt:'2026-10-17T08:00:00Z',deltas:[{playerId:'me',delta:30,after:1230}]};
- await page.stats({rating:1230,games:1,wins:1,history:[match]});assert.equal(root.rebuilds,count,'hidden history defers DOM work');
- await page.navigate('rating');assert.equal(root.rebuilds,count+1);assert.match(root.textContent,/Win · Rally Friend \+ Net Friend/);
- await page.stats({rating:1240,games:1,wins:1,history:[structuredClone(match)]});assert.equal(root.rebuilds,count+1,'equal history values preserve rows across new response objects');
+ await page.stats({rating:1230,games:1,wins:1,history:[match]});await page.navigate('profile');
+ assert.equal(page.node('test-rating').textContent,'1230');assert.equal(page.node('test-games').textContent,'1');assert.equal(page.node('test-winrate').textContent,'100%');
+ assert.equal(page.nodes.has('history'),false,'the app must not reconstruct the retired compact My rating history');
 });
 
 test('story and effect modules load on demand, reuse controllers and discard delayed effects after pagehide',async()=>{

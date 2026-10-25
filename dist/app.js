@@ -145,24 +145,6 @@ function renderOptions(){
   });
   for(const button of group.children)button.setAttribute('aria-pressed',String(state.hat===button.dataset.hat));
 }
-function renderHistory(){
-  const root=document.getElementById('history');root.replaceChildren();
-  const history=matchStats?.history||[];
-  if(!history.length){const p=document.createElement('p');p.className='empty-state';p.textContent='Your completed doubles games will appear here. Connect with players in Play & QR to start.';root.append(p);return;}
-  for(const item of history){
-    const ownSide=item.teams.a.some(player=>player.id===account.user.id)?'a':'b';
-    const opponents=item.teams[ownSide==='a'?'b':'a'];
-    const win=item.winnerSide===ownSide;
-    const result=item.deltas.find(delta=>delta.playerId===account.user.id);
-    if(!result)continue;
-    const row=document.createElement('div');row.className='history-row';
-    const label=document.createElement('div');const strong=document.createElement('strong');strong.className=win?'win-label':'loss-label';strong.textContent=(win?'Win':'Loss')+' · '+opponents.map(player=>player.name).join(' + ');
-    const small=document.createElement('small');small.textContent='Doubles · '+new Date(item.completedAt).toLocaleDateString()+' · Opponent average '+Math.round(opponents.reduce((sum,player)=>sum+player.rating,0)/2)+' MMR';label.append(strong,small);
-    if(item.scores?.length){const scores=document.createElement('small');scores.className='history-set-scores';scores.textContent='Sets (your duo first): '+item.scores.map(score=>`${score[ownSide]}–${score[ownSide==='a'?'b':'a']}`).join(', ');label.append(scores);}
-    const delta=document.createElement('span');delta.className='history-delta '+(result.delta>=0?'win-label':'loss-label');delta.textContent=(result.delta>=0?'+':'')+result.delta;
-    const after=document.createElement('span');after.textContent=result.after+' MMR';row.append(label,delta,after);root.append(row);
-  }
-}
 function render(){
   const verified=account.profile.isVerified===true&&Date.parse(account.profile.verifiedUntil)>Date.now();
   const badge=document.getElementById('profile-verified');if(badge)badge.hidden=!verified;
@@ -183,10 +165,9 @@ function render(){
   if(canvasId)renderChanged(canvasId,avatarAppearance(state),()=>drawScene(document.getElementById(canvasId)));
   if(page==='avatar'||page==='locker')syncAvatarControls(page);
   if(page==='locker'){renderOptions();renderWardrobe();}
-  if(page==='rating')renderChanged('history',matchStats?.history||[],renderHistory);
   storyEditor?.refresh();
 }
-function navigate(page){membershipNavigationVersion++;if(page==='courts')page='hosting';if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard','friends','hosting','membership'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});render();if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();if(friendsController)Promise.resolve(friendsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='friends')startFriends();if(hostingController)Promise.resolve(hostingController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='hosting')startHosting();if(membershipController)Promise.resolve(membershipController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='membership')startMembership();}
+function navigate(page){membershipNavigationVersion++;if(page==='rating')page='profile';if(page==='courts')page='hosting';if(!state.avatarCreated)page='avatar';else if(!['profile','locker','play','leaderboard','friends','hosting','membership'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});render();if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();if(friendsController)Promise.resolve(friendsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='friends')startFriends();if(hostingController)Promise.resolve(hostingController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='hosting')startHosting();if(membershipController)Promise.resolve(membershipController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='membership')startMembership();}
 let storyEditor=null,storyStarting=null;
 let chosenBody=state.avatarCreated?state.bodyType:null;
 const setupHeight=document.getElementById('setup-height');
