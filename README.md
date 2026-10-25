@@ -66,7 +66,7 @@ Open **Membership** or choose **Get verified** on My player to view the planned 
 
 Plan buttons open details and the current checkout status. PayMongo activation and payment setup are pending, so checkout is visibly unavailable. These controls make no payment requests, collect no payment details, and never grant verification or court ownership. Existing protected player verification is displayed with its expiry without claiming it is a paid subscription. Public player badges explicitly say **Verified Player**.
 
-The future owner booking example shows PHP 500 paid by the player, a PHP 450 owner base share, and a PHP 50 Sideout fee deducted once per booking, before payment-provider charges. Live owner tools, booking collection, and payouts remain pending provider setup. See `docs/court-owner-booking-plan.md` for the complete model and open settlement decisions.
+Live owner tools, booking collection, and payouts remain pending provider setup. See `docs/court-owner-booking-plan.md` for the planned model and open settlement decisions.
 
 ## Hosting
 
