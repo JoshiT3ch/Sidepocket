@@ -252,7 +252,7 @@ test('a pending invitation opens a global popup on startup with the saved invite
 }));
 
 test('new invitations are polled and pop up from every signed-in page',async()=>{
- for(const page of ['profile','rating','play','locker','friends','hosting','leaderboard']){
+ for(const page of ['profile','rating','play','locker','friends','hosting','membership','leaderboard']){
   let current=snapshot();
   await withPlay({initialPage:page,request:()=>current},async({controller,polls,poll,nodes,routes})=>{
    await controller.handleNavigation(page);
@@ -374,7 +374,7 @@ test('incoming challenges show both rosters and ratings for recipients on either
 });
 
 test('incoming match challenges pop up through polling on every signed-in page',async()=>{
- for(const page of ['profile','rating','play','locker','friends','hosting','leaderboard']){
+ for(const page of ['profile','rating','play','locker','friends','hosting','membership','leaderboard']){
   let current=paired();
   await withPlay({initialPage:page,request:()=>current},async({nodes,controller,poll,routes})=>{
    await controller.handleNavigation(page);assert.equal(nodes['duo-invitation-dialog'].open,false);

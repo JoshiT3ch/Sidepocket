@@ -17,7 +17,7 @@ export function initLeaderboard({onNavigate=()=>{},request=(...args)=>window.sid
     const group=el('div','leader-person');
     const canvas=el('canvas','leader-avatar');canvas.width=112;canvas.height=144;canvas.setAttribute('aria-hidden','true');
     try{drawAvatar(canvas.getContext('2d'),48,138,1.12,player.avatar||{});}catch{canvas.hidden=true;}
-    const copy=el('div','leader-person-copy');copy.append(el('strong','',player.name||'Player'));if(player.isVerified===true)copy.append(el('span','player-verified','✓ Verified'));
+    const copy=el('div','leader-person-copy');copy.append(el('strong','',player.name||'Player'));if(player.isVerified===true)copy.append(el('span','player-verified','✓ Verified Player'));
     group.append(canvas,copy);return group;
   };
   const playerRow=(entry,me)=>{

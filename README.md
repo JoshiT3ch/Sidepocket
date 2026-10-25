@@ -60,6 +60,14 @@ The optional local SQLite mode retains its separate email/password forms and bac
 
 Male and female hairstyles have separate choices; both support six hair colors. The locker includes 40 clothing pieces across caps, shirts, shorts, and pants, with Nike and Adidas choices. Avatars and outfits are saved per account and appear on the profile and downloadable story card.
 
+## Membership plans
+
+Open **Membership** or choose **Get verified** on My player to view the planned **Verified Player / Premium plan at PHP 139/month** and separate **Court Owner plan at PHP 1,000/month**. The player plan describes the checkmark and Hosting access. The owner plan describes future club listings, numbered courts, photos, fixed prices, and booking tools. Basic profiles, avatars, room QR, ratings, and requests to join games remain free.
+
+Plan buttons open details and the current checkout status. PayMongo activation and payment setup are pending, so checkout is visibly unavailable. These controls make no payment requests, collect no payment details, and never grant verification or court ownership. Existing protected player verification is displayed with its expiry without claiming it is a paid subscription. Public player badges explicitly say **Verified Player**.
+
+The future owner booking example shows PHP 500 paid by the player, a PHP 450 owner base share, and a PHP 50 Sideout fee deducted once per booking, before payment-provider charges. Live owner tools, booking collection, and payouts remain pending provider setup. See `docs/court-owner-booking-plan.md` for the complete model and open settlement decisions.
+
 ## Hosting
 
 Open **Hosting** for upcoming games, **My events**, and past events. Date-grouped cards show the title, doubles category, Philippine time, venue, and real confirmed/capacity count (for example, 30/30). **Details** includes the full address, per-player fee, notes, and an optional calendar download. **Participants** shows confirmed pixel players and the remaining open spots.

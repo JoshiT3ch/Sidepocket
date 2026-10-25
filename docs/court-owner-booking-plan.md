@@ -1,6 +1,6 @@
 # Court Owner and paid booking plan
 
-Status: product requirements confirmed in part; implementation and live payment activation are pending provider provisioning. This document does not enable billing, paid reservations, or owner payouts.
+Status: the website lists both planned memberships and provides Get verified / plan-detail controls. Live subscription checkout, owner booking tools, paid reservations and payouts are pending provider provisioning. Plan buttons do not grant an entitlement or submit a payment.
 
 ## Confirmed commercial model
 

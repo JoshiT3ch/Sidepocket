@@ -47,7 +47,7 @@ export function initHosting({request,document:doc=globalThis.document,setInterva
     const cell=el('div',undefined,'hosting-person');cell.dataset.hostingParticipant=player.id;
     const circle=el('div',undefined,'hosting-avatar'),canvas=el('canvas');canvas.width=100;canvas.height=140;canvas.setAttribute('role','img');canvas.setAttribute('aria-label',`${player.name}’s pixel character`);circle.append(canvas);
     cell.append(circle,el('strong',player.name),el('small',host?'Host':`${Number(player.rating||1200).toLocaleString()} MMR`));
-    if(player.isVerified)cell.append(el('span','✓ Verified','hosting-verified'));
+    if(player.isVerified)cell.append(el('span','✓ Verified Player','hosting-verified'));
     try{drawAvatar(canvas.getContext('2d'),47,131,1.2,{...(player.avatar||{}),name:player.name});}catch{canvas.setAttribute('aria-label',player.name);}return cell;
   }
   function render(){

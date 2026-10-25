@@ -50,6 +50,22 @@ let friendsController=null;
 let friendsStarting=null;
 let friendsVersion=0;
 let hostingController=null,hostingStarting=null,hostingVersion=0;
+let membershipController=null,membershipStarting=null,membershipVersion=0,membershipNavigationVersion=0;
+async function startMembership({plan,trigger}={}){
+  if(!state.avatarCreated)return;
+  const version=membershipVersion,navigation=membershipNavigationVersion;
+  if(!membershipController){
+    if(!membershipStarting)membershipStarting=(async()=>{
+      try{const {initMembership}=await import('./membership.js');if(version!==membershipVersion)return;membershipController=initMembership({profile:account.profile,onNavigate:navigate});await membershipController.handleNavigation(document.querySelector('.page.active')?.id||'profile');return membershipController;}
+      catch(error){if(version===membershipVersion)toast(error.message||'Could not open memberships. Please try again.');}
+      finally{if(version===membershipVersion)membershipStarting=null;}
+    })();
+    await membershipStarting;
+  }
+  if(plan&&version===membershipVersion&&navigation===membershipNavigationVersion)membershipController?.openPlan(plan,trigger);
+}
+window.addEventListener('pagehide',()=>{membershipVersion++;membershipController?.destroy();membershipController=null;membershipStarting=null;});
+window.addEventListener('pageshow',event=>{if(event.persisted&&document.querySelector('.page.active')?.id==='membership')startMembership();});
 async function startHosting(){
   if(!state.avatarCreated)return;
   if(hostingController)return hostingController.handleNavigation('hosting');
@@ -150,6 +166,11 @@ function renderHistory(){
 function render(){
   const verified=account.profile.isVerified===true&&Date.parse(account.profile.verifiedUntil)>Date.now();
   const badge=document.getElementById('profile-verified');if(badge)badge.hidden=!verified;
+  const membershipTitle=document.getElementById('profile-membership-title'),membershipCopy=document.getElementById('profile-membership-copy'),membershipButton=document.getElementById('profile-get-verified');
+  if(membershipTitle)membershipTitle.textContent=verified?'Your player checkmark is active.':'Get verified. Host your next game.';
+  if(membershipCopy)membershipCopy.textContent=verified?'You have a Verified Player checkmark. View the player plan and the separate Court Owner membership.':'Explore Premium Player at ₱139/month for a player checkmark and Hosting access. Online checkout is coming soon.';
+  if(membershipButton)membershipButton.textContent=verified?'View membership ↗':'Get verified ↗';
+  const hostingMembership=document.getElementById('hosting-membership-link');if(hostingMembership)hostingMembership.hidden=verified;
   renderChanged('player-name',state.name,()=>document.querySelectorAll('.player-name').forEach(e=>e.textContent=state.name.trim()||defaults.name));
   renderChanged('stats',[matchStats?.rating,matchStats?.games,matchStats?.wins],()=>{
     document.querySelectorAll('[data-rating]').forEach(e=>e.textContent=matchStats?.rating??'—');document.querySelectorAll('[data-rank]').forEach(e=>e.textContent=rank());
@@ -165,7 +186,7 @@ function render(){
   if(page==='rating')renderChanged('history',matchStats?.history||[],renderHistory);
   storyEditor?.refresh();
 }
-function navigate(page){if(page==='courts')page='hosting';if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard','friends','hosting'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});render();if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();if(friendsController)Promise.resolve(friendsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='friends')startFriends();if(hostingController)Promise.resolve(hostingController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='hosting')startHosting();}
+function navigate(page){membershipNavigationVersion++;if(page==='courts')page='hosting';if(!state.avatarCreated)page='avatar';else if(!['profile','locker','rating','play','leaderboard','friends','hosting','membership'].includes(page))page='profile';document.getElementById('player-app').classList.toggle('needs-avatar',!state.avatarCreated);document.querySelectorAll('.page').forEach(e=>{const active=e.id===page;e.classList.toggle('active',active);e.hidden=!active;});document.querySelectorAll('.nav-button').forEach(e=>{const active=e.dataset.page===page;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});if(location.hash!=='#'+page)history.replaceState(null,'','#'+page);window.scrollTo({top:0,behavior:'instant'});render();if(playController)Promise.resolve(playController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='play')startPlay();if(page==='leaderboard')startLeaderboard();if(friendsController)Promise.resolve(friendsController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='friends')startFriends();if(hostingController)Promise.resolve(hostingController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='hosting')startHosting();if(membershipController)Promise.resolve(membershipController.handleNavigation(page)).catch(error=>toast(error.message));else if(page==='membership')startMembership();}
 let storyEditor=null,storyStarting=null;
 let chosenBody=state.avatarCreated?state.bodyType:null;
 const setupHeight=document.getElementById('setup-height');
@@ -270,7 +291,8 @@ document.getElementById('avatar-form').addEventListener('submit',async event=>{
 document.getElementById('locker-height').addEventListener('input',event=>{const input=event.target;if(!input.value||!input.checkValidity())return;state.height=Number(input.value);persist();render();});
 document.getElementById('locker-body').addEventListener('change',event=>{state.bodyType=event.target.value;persist();render();});
 
-document.querySelectorAll('[data-page]').forEach(e=>e.addEventListener('click',()=>navigate(e.dataset.page)));document.querySelectorAll('[data-goto]').forEach(e=>e.addEventListener('click',()=>navigate(e.dataset.goto)));window.addEventListener('hashchange',()=>navigate(location.hash.slice(1)));
+document.querySelectorAll('[data-page]').forEach(e=>e.addEventListener('click',()=>navigate(e.dataset.page)));document.querySelectorAll('[data-membership-plan]').forEach(button=>button.addEventListener('click',()=>startMembership({plan:button.dataset.membershipPlan,trigger:button})));
+document.querySelectorAll('[data-goto]').forEach(e=>e.addEventListener('click',()=>navigate(e.dataset.goto)));window.addEventListener('hashchange',()=>navigate(location.hash.slice(1)));
 document.getElementById('nickname').value=state.name;
 document.getElementById('nickname').addEventListener('input',e=>{state.name=e.target.value;persist();document.querySelectorAll('.player-name').forEach(el=>el.textContent=state.name.trim()||defaults.name);});
 document.getElementById('save-look').addEventListener('click',async()=>{const heightInput=document.getElementById('locker-height');if(!heightInput.checkValidity()){heightInput.closest('details').open=true;heightInput.reportValidity();return;}state.height=Number(heightInput.value);state.name=state.name.trim()||defaults.name;document.getElementById('nickname').value=state.name;const saved=await persist({immediate:true});render();if(saved)toast('Your look is saved. See you on the court.');navigate('profile');});

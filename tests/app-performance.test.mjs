@@ -51,8 +51,9 @@ function fakePage(){
  const body=new Element('body');
  const node=id=>{if(!nodes.has(id)){const item=new Element(id.includes('avatar')||id==='story-canvas'?'canvas':'div');item.id=id;nodes.set(id,item);body.append(item);}return nodes.get(id);};
  Object.assign(doc,{body,getElementById:node,createElement:tag=>new Element(tag),querySelector:selector=>selector==='.rating-track span'?node('rating-track-span'):select(body,selector)[0]||null,querySelectorAll:selector=>select(body,selector),addEventListener:(type,fn)=>documentEvents.set(type,fn)});
- const pageIds=['avatar','profile','locker','rating','play','leaderboard','hosting','friends'];
+ const pageIds=['avatar','profile','locker','rating','play','leaderboard','hosting','friends','membership'];
  for(const id of pageIds){const page=node(id);page.className='page'+(id==='profile'?' active':'');const nav=new Element('button');nav.className='nav-button';nav.dataset.page=id;body.append(nav);}
+ const membershipTrigger=node('profile-get-verified');membershipTrigger.tagName='BUTTON';membershipTrigger.dataset.membershipPlan='player';
  for(const scope of ['setup','locker']){
   for(const type of ['male','female']){const button=new Element('button');button.dataset.character=type;node(scope+'-character-options').append(button);}
   const button=new Element('button');button.dataset.hairHeadwear='';body.append(button);
@@ -147,6 +148,53 @@ test('Hosting import finishing after pagehide waits for a new page lifetime',asy
  await new Promise(resolve=>setImmediate(resolve));assert.equal(creates,0);
  for(const fn of page.windowEvents.get('pageshow')||[])await fn({persisted:true});
  await new Promise(resolve=>setImmediate(resolve));assert.equal(creates,1);
+});
+
+test('Membership loads on navigation with the signed-in profile and reuses its controller',async()=>{
+ const page=await appPage();let creates=0,options;const navigations=[];
+ page.modules['./membership.js']={initMembership:input=>{creates++;options=input;return{handleNavigation:async value=>navigations.push(value),destroy(){}};}};
+ assert.equal(page.counters.imports.includes('./membership.js'),false,'profile startup must not import plan dialogs');
+ await page.navigate('membership');await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(page.context.location.hash,'#membership');assert.equal(page.node('membership').hidden,false);assert.equal(creates,1);
+ assert.equal(options.profile.name,page.profile.name);assert.equal(typeof options.onNavigate,'function');
+ await page.navigate('profile');await page.navigate('membership');
+ assert.equal(creates,1);assert.deepEqual(navigations,['membership','profile','membership']);
+ assert.equal(page.counters.imports.filter(name=>name==='./membership.js').length,1);
+});
+
+test('Get verified lazily opens the player plan with its focus-return trigger',async()=>{
+ const page=await appPage(),opened=[];
+ page.modules['./membership.js']={initMembership:()=>({handleNavigation(){},openPlan:(plan,trigger)=>opened.push({plan,trigger}),destroy(){}})};
+ assert.equal(page.counters.imports.includes('./membership.js'),false);
+ await page.node('profile-get-verified').click();await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(opened,[{plan:'player',trigger:page.node('profile-get-verified')}]);
+ assert.equal(page.counters.imports.filter(name=>name==='./membership.js').length,1);
+});
+
+test('a delayed Get verified import cannot reopen a plan after the player navigates away',async()=>{
+ const page=await appPage();let finishImport,opened=0;
+ page.modules['./membership.js']=new Promise(resolve=>{finishImport=resolve;});
+ const opening=page.node('profile-get-verified').click();
+ await page.navigate('locker');
+ finishImport({initMembership:options=>({handleNavigation(){},openPlan(){opened++;options.onNavigate('membership');},destroy(){}})});
+ await opening;await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(opened,0);assert.equal(page.context.location.hash,'#locker');
+ assert.equal(page.node('locker').hidden,false);assert.equal(page.node('membership').hidden,true);
+});
+
+test('Membership restore creates a fresh controller and discards imports from the previous page lifetime',async()=>{
+ const page=await appPage();let creates=0,destroys=0,finishImport;
+ const module={initMembership:()=>{creates++;return{handleNavigation:async()=>{},destroy(){destroys++;}};}};
+ page.modules['./membership.js']=new Promise(resolve=>{finishImport=resolve;});
+ await page.navigate('membership');
+ for(const fn of page.windowEvents.get('pagehide')||[])await fn();
+ finishImport(module);await new Promise(resolve=>setImmediate(resolve));assert.equal(creates,0);
+ for(const fn of page.windowEvents.get('pageshow')||[])await fn({persisted:true});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(creates,1);
+ for(const fn of page.windowEvents.get('pagehide')||[])await fn();
+ assert.equal(destroys,1);
+ for(const fn of page.windowEvents.get('pageshow')||[])await fn({persisted:true});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(creates,2);
 });
 
 test('profile startup draws one visible avatar and defers locker, setup, story and effects work',async()=>{
