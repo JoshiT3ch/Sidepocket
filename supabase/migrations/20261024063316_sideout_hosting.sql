@@ -67,7 +67,7 @@ begin
   if p_data ? 'fee' and (jsonb_typeof(p_data->'fee') is distinct from 'number') then raise exception 'Enter a whole-peso fee between 0 and 10000.';end if;
   if coalesce((p_data->>'capacity')::numeric,30) not between 2 and 100 or coalesce((p_data->>'capacity')::numeric,30)<>trunc(coalesce((p_data->>'capacity')::numeric,30)) then raise exception 'Choose a capacity between 2 and 100 players.';end if;
   if coalesce((p_data->>'fee')::numeric,0) not between 0 and 10000 or coalesce((p_data->>'fee')::numeric,0)<>trunc(coalesce((p_data->>'fee')::numeric,0)) then raise exception 'Enter a whole-peso fee between 0 and 10000.';end if;
-  v_capacity:=coalesce((p_data->>'capacity')::integer,30);v_fee:=coalesce((p_data->>'fee')::integer,0);
+  v_capacity:=coalesce((p_data->>'capacity')::numeric::integer,30);v_fee:=coalesce((p_data->>'fee')::numeric::integer,0);
   if coalesce(p_data->>'date','') !~ '^\d{4}-\d{2}-\d{2}$' or coalesce(p_data->>'startTime','') !~ '^([01]\d|2[0-3]):[0-5]\d$' or coalesce(p_data->>'endTime','') !~ '^([01]\d|2[0-3]):[0-5]\d$' then raise exception 'Choose a valid date and start/end time.';end if;
   begin v_date:=(p_data->>'date')::date;v_start:=(p_data->>'startTime')::time;v_end:=(p_data->>'endTime')::time;
   exception when datetime_field_overflow or invalid_datetime_format then raise exception 'Choose a valid calendar date.';end;

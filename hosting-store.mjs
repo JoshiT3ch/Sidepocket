@@ -89,7 +89,7 @@ export function createHostingStore({db,session,body,send,HttpError,players,now=D
       }
      }else if(action==='respond'){
       if(!host)fail(403,'Only the host can respond to join requests.');
-      if(typeof data.accept!=='boolean'||typeof data.userId!=='string')fail(400,'Choose a player request and accept or decline.');
+      if(typeof data.accept!=='boolean'||typeof data.userId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.userId))fail(400,'Choose a player request and accept or decline.');
       if(data.userId===user.id)fail(409,'The host stays confirmed in this session.');
       const target=membership(e.id,data.userId),next=data.accept?'confirmed':'declined';
       if(target!==next){
